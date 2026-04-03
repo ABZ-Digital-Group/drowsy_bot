@@ -1,31 +1,23 @@
 require('dotenv').config();
 const { 
-    Client, 
-    GatewayIntentBits, 
-    ActionRowBuilder, 
-    ButtonBuilder, 
-    ButtonStyle, 
-    EmbedBuilder, 
-    REST, 
-    Routes, 
-    SlashCommandBuilder 
+    Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, 
+    ButtonStyle, EmbedBuilder, REST, Routes, SlashCommandBuilder 
 } = require('discord.js');
-const { joinVoiceChannel, EndBehaviorType, VoiceConnectionStatus } = require('@discordjs/voice');
+const { 
+    joinVoiceChannel, EndBehaviorType, createAudioPlayer, 
+    createAudioResource, AudioPlayerStatus, NoSubscriberBehavior 
+} = require('@discordjs/voice');
 const prism = require('prism-media');
 const fs = require('fs');
-const path = require('path');
 
 const client = new Client({ 
     intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent, 
-        GatewayIntentBits.GuildVoiceStates, 
+        GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent, GatewayIntentBits.GuildVoiceStates, 
         GatewayIntentBits.GuildMembers 
     ] 
 });
 
-// Create recordings folder if it doesn't exist
 if (!fs.existsSync('./recordings')) fs.mkdirSync('./recordings');
 
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
@@ -38,6 +30,7 @@ const UPDATE_INTERVAL = 4000;
 
 const channelData = new Map();
 
+// --- PERMISSION CHECK ---
 function isAdmin(member) {
     const allowedRoles = ['Guards', 'Knights', 'Drowsy Defenders', 'God'];
     return member.roles.cache.some(role => allowedRoles.includes(role.name)) || member.guild.ownerId === member.id;
@@ -46,43 +39,70 @@ function isAdmin(member) {
 function getChannelData(channelId) {
     if (!channelData.has(channelId)) {
         channelData.set(channelId, { 
-            queue: [], 
-            currentSpeaker: null, 
-            lastMessageId: null,
-            activeHypeCollector: null,
-            isRecording: false
+            queue: [], currentSpeaker: null, lastMessageId: null,
+            activeHypeCollector: null, radioPlayer: null, voiceConnection: null
         });
     }
     return channelData.get(channelId);
 }
 
+// --- RADIO LOGIC ---
+async function startRadio(channel, data) {
+    const vc = channel.guild.members.cache.get(client.user.id)?.voice.channel || 
+               channel.guild.channels.cache.find(c => c.type === 2 && c.members.size > 0);
+    
+    if (!vc) return console.log("No one in VC to play radio for.");
+
+    data.voiceConnection = joinVoiceChannel({
+        channelId: vc.id,
+        guildId: channel.guild.id,
+        adapterCreator: channel.guild.voiceAdapterCreator,
+    });
+
+    const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play } });
+    
+    // Check if the intermission file exists
+    if (fs.existsSync('./assets/intermission.mp3')) {
+        const resource = createAudioResource('./assets/intermission.mp3');
+        player.play(resource);
+        data.voiceConnection.subscribe(player);
+        data.radioPlayer = player;
+        await channel.send("📻 **Radio Mode Active:** Playing background vibes until the next singer is ready.");
+    } else {
+        console.log("Missing assets/intermission.mp3 - Radio skipped.");
+    }
+}
+
+function stopRadio(data) {
+    if (data.radioPlayer) {
+        data.radioPlayer.stop();
+        data.radioPlayer = null;
+    }
+}
+
 // --- SLASH COMMANDS ---
 const commands = [
-    new SlashCommandBuilder().setName('start-queue').setDescription('Start the event queue (Staff Only)'),
+    new SlashCommandBuilder().setName('start-queue').setDescription('Start the event (Staff Only)'),
     new SlashCommandBuilder().setName('stop-queue').setDescription('Stop the event (Staff Only)'),
-    new SlashCommandBuilder().setName('queue').setDescription('Repost the queue at the bottom'),
-    new SlashCommandBuilder().setName('next').setDescription('Move to next speaker (Staff Only)')
+    new SlashCommandBuilder().setName('next').setDescription('Move to next singer (Staff Only)'),
+    new SlashCommandBuilder().setName('radio').setDescription('Toggle background music manually')
 ].map(command => command.toJSON());
 
 client.once('ready', async () => {
-    console.log(`🎙️ Drowsy Vocals PRO is online as ${client.user.tag}!`);
+    console.log(`🎙️ Drowsy Vocals ULTRA is online!`);
     const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
-    try {
-        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-    } catch (e) { console.error(e); }
+    try { await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands }); } catch (e) { console.error(e); }
 });
 
+// --- UI REFRESH ---
 async function refreshPopup(channel) {
     const data = getChannelData(channel.id);
     if (data.lastMessageId) {
-        try {
-            const oldMsg = await channel.messages.fetch(data.lastMessageId);
-            if (oldMsg) await oldMsg.delete();
-        } catch (e) {}
+        try { const m = await channel.messages.fetch(data.lastMessageId); if (m) await m.delete(); } catch (e) {}
     }
     const embed = new EmbedBuilder()
         .setTitle("💤 Drowsy Speaker Queue")
-        .setDescription(`**Currently on the Mic:** ${data.currentSpeaker ? `<@${data.currentSpeaker}>` : "Open Mic"}\n\n**Up Next:**\n${data.queue.length > 0 ? data.queue.map((id, i) => `**${i + 1}.** <@${id}>`).join('\n') : "*The queue is empty.*"}`)
+        .setDescription(`**Currently on the Mic:** ${data.currentSpeaker ? `<@${data.currentSpeaker}>` : "Open Mic"}\n\n**Up Next:**\n${data.queue.length > 0 ? data.queue.map((id, i) => `**${i+1}.** <@${id}>`).join('\n') : "*The queue is empty.*"}`)
         .setColor(0x5865F2);
 
     const row = new ActionRowBuilder().addComponents(
@@ -91,74 +111,64 @@ async function refreshPopup(channel) {
         new ButtonBuilder().setCustomId('finished').setLabel('Done Speaking 🏁').setStyle(ButtonStyle.Success)
     );
 
-    const newMsg = await channel.send({ embeds: [embed], components: [row] });
-    data.lastMessageId = newMsg.id;
+    const msg = await channel.send({ embeds: [embed], components: [row] });
+    data.lastMessageId = msg.id;
 }
 
+// --- HYPE & RECORDING SESSION ---
 async function startHypeSession(channel, data) {
+    stopRadio(data); // Music off, singer on!
     if (data.activeHypeCollector) data.activeHypeCollector.stop();
     
     let currentHype = 30; 
     let isRecording = false;
     const speakerId = data.currentSpeaker;
-    let connection = null;
 
-    const getHypeEmbed = (hype, recording) => {
-        const bar = "🟦".repeat(Math.round(hype/10)) + "⬛".repeat(10 - Math.round(hype/10));
+    const getHypeEmbed = (h, r) => {
+        const bar = "🟦".repeat(Math.round(h/10)) + "⬛".repeat(10 - Math.round(h/10));
         return new EmbedBuilder()
-            .setTitle(recording ? `🔴 RECORDING LIVE: <@${speakerId}>` : `🎶 NOW PERFORMING: <@${speakerId}>`)
-            .setDescription(`**Hype Meter:**\n${bar} **${hype}%**\n\n*Audience: Use buttons to cheer! Singer: Hit Record for a demo!*`)
-            .setColor(recording ? 0xff0000 : (hype > 80 ? 0xFEE75C : 0x5865F2));
+            .setTitle(r ? `🔴 RECORDING LIVE: <@${speakerId}>` : `🎶 NOW PERFORMING: <@${speakerId}>`)
+            .setDescription(`**Hype Meter:**\n${bar} **${h}%**\n\n*Audience: Cheer! Singer: Hit Record!*`)
+            .setColor(r ? 0xff0000 : (h > 80 ? 0xFEE75C : 0x5865F2));
     };
 
-    const hypeRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`hype_clap`).setLabel('👏').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`hype_fire`).setLabel('🔥').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId(`hype_record`).setLabel('⏺️ Record Me').setStyle(ButtonStyle.Danger)
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`hype_c`).setLabel('👏').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`hype_f`).setLabel('🔥').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(`hype_r`).setLabel('⏺️ Record Me').setStyle(ButtonStyle.Danger)
     );
 
-    const hypeMsg = await channel.send({ embeds: [getHypeEmbed(currentHype, false)], components: [hypeRow] });
+    const hypeMsg = await channel.send({ content: `🎙️ **Mic check! <@${speakerId}> is up!**`, embeds: [getHypeEmbed(currentHype, false)], components: [row] });
     const collector = hypeMsg.createMessageComponentCollector({ time: 600000 });
     data.activeHypeCollector = collector;
 
-    const refreshLoop = setInterval(async () => {
-        if (data.currentSpeaker !== speakerId) return clearInterval(refreshLoop);
+    const loop = setInterval(async () => {
+        if (data.currentSpeaker !== speakerId) return clearInterval(loop);
         currentHype = Math.max(currentHype - DECAY_RATE, 0);
-        try { await hypeMsg.edit({ embeds: [getHypeEmbed(currentHype, isRecording)] }); } catch (e) { clearInterval(refreshLoop); }
+        try { await hypeMsg.edit({ embeds: [getHypeEmbed(currentHype, isRecording)] }); } catch (e) { clearInterval(loop); }
     }, UPDATE_INTERVAL);
 
     collector.on('collect', async i => {
-        if (i.customId === 'hype_record') {
-            if (i.user.id !== speakerId) return i.reply({ content: "Only the singer can record!", ephemeral: true });
-            if (isRecording) return i.reply({ content: "Already recording!", ephemeral: true });
-
+        if (i.customId === 'hype_r') {
+            if (i.user.id !== speakerId) return i.reply({ content: "Singer only!", ephemeral: true });
             const vc = i.member.voice.channel;
-            if (!vc) return i.reply({ content: "Join VC first!", ephemeral: true });
+            if (!vc) return i.reply({ content: "Join VC!", ephemeral: true });
 
             isRecording = true;
-            await i.reply({ content: "🔴 Recording started! I will DM you the MP3 when finished.", ephemeral: true });
-
-            connection = joinVoiceChannel({ channelId: vc.id, guildId: i.guild.id, adapterCreator: i.guild.voiceAdapterCreator, selfDeaf: false });
+            await i.reply({ content: "🔴 Recording... MP3 will be DMed after.", ephemeral: true });
             
+            data.voiceConnection = joinVoiceChannel({ channelId: vc.id, guildId: i.guild.id, adapterCreator: i.guild.voiceAdapterCreator, selfDeaf: false });
             const fileName = `./recordings/${speakerId}-${Date.now()}.mp3`;
             const outStream = fs.createWriteStream(fileName);
-            const opusStream = connection.receiver.subscribe(speakerId, { end: { behavior: EndBehaviorType.Manual } });
-            
-            const transcoder = new prism.FFmpeg({
-                args: ['-f', 's16le', '-ar', '48000', '-ac', '2', '-i', '-', '-codec:a', 'libmp3lame', '-b:a', '128k', '-f', 'mp3']
-            });
+            const opusStream = data.voiceConnection.receiver.subscribe(speakerId, { end: { behavior: EndBehaviorType.Manual } });
+            const transcoder = new prism.FFmpeg({ args: ['-f', 's16le', '-ar', '48000', '-ac', '2', '-i', '-', '-codec:a', 'libmp3lame', '-b:a', '128k', '-f', 'mp3'] });
 
             opusStream.pipe(transcoder).pipe(outStream);
 
             collector.once('end', () => {
-                opusStream.destroy();
-                outStream.end();
-                if (connection) connection.destroy();
+                opusStream.destroy(); outStream.end();
                 setTimeout(async () => {
-                    try {
-                        const user = await client.users.fetch(speakerId);
-                        await user.send({ content: "🎁 Here is your Drowsy Vocals Demo!", files: [fileName] });
-                    } catch (e) { console.log("DM failed."); }
+                    try { const user = await client.users.fetch(speakerId); await user.send({ content: "🎁 Your Demo:", files: [fileName] }); } catch (e) {}
                 }, 2000);
             });
         } else if (i.customId.startsWith('hype_')) {
@@ -167,10 +177,7 @@ async function startHypeSession(channel, data) {
         }
     });
 
-    collector.on('end', () => {
-        clearInterval(refreshLoop);
-        hypeMsg.edit({ components: [] }).catch(() => {});
-    });
+    collector.on('end', () => { clearInterval(loop); hypeMsg.edit({ components: [] }).catch(() => {}); });
 }
 
 async function handleNextSpeaker(channel, data) {
@@ -178,9 +185,9 @@ async function handleNextSpeaker(channel, data) {
         data.currentSpeaker = data.queue.shift();
         await startHypeSession(channel, data);
     } else {
-        if (data.activeHypeCollector) data.activeHypeCollector.stop();
         data.currentSpeaker = null;
-        await channel.send("📭 The queue is now empty.");
+        if (data.activeHypeCollector) data.activeHypeCollector.stop();
+        await startRadio(channel, data); // No singers left? Play radio!
     }
 }
 
@@ -193,35 +200,37 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isChatInputCommand()) {
         const { commandName } = interaction;
-        if (['start-queue', 'stop-queue', 'next'].includes(commandName) && !isAdmin(member)) 
-            return interaction.reply({ content: "❌ No permission.", ephemeral: true });
+        if (['start-queue', 'stop-queue', 'next', 'radio'].includes(commandName) && !isAdmin(member)) return interaction.reply({ content: "Staff Only.", ephemeral: true });
 
         await interaction.deferReply({ ephemeral: true });
 
-        if (commandName === 'start-queue' || commandName === 'queue') {
+        if (commandName === 'start-queue') {
             await refreshPopup(interaction.channel);
-            await interaction.editReply("Refreshed!");
-        } else if (commandName === 'stop-queue') {
-            if (data.activeHypeCollector) data.activeHypeCollector.stop();
-            channelData.delete(interaction.channelId);
-            await interaction.editReply("Stopped.");
+            await startRadio(interaction.channel, data);
+            await interaction.editReply("Started!");
         } else if (commandName === 'next') {
             await handleNextSpeaker(interaction.channel, data);
             await refreshPopup(interaction.channel);
-            await interaction.editReply("Next!");
+            await interaction.editReply("Next Up!");
+        } else if (commandName === 'radio') {
+            data.radioPlayer ? stopRadio(data) : await startRadio(interaction.channel, data);
+            await interaction.editReply("Radio Toggled!");
+        } else if (commandName === 'stop-queue') {
+            stopRadio(data);
+            if (data.voiceConnection) data.voiceConnection.destroy();
+            channelData.delete(interaction.channelId);
+            await interaction.editReply("Event Stopped.");
         }
     }
 
     if (interaction.isButton()) {
         if (interaction.customId === 'join') {
             if (!member.voice.channel) return interaction.reply({ content: "Join VC first!", ephemeral: true });
-            if (data.queue.includes(interaction.user.id) || data.currentSpeaker === interaction.user.id) 
-                return interaction.reply({ content: "Already in line!", ephemeral: true });
+            if (data.queue.includes(interaction.user.id) || data.currentSpeaker === interaction.user.id) return interaction.reply({ content: "Already in line!", ephemeral: true });
             data.queue.push(interaction.user.id);
         } else if (interaction.customId === 'leave') {
-            const wasSpeaker = data.currentSpeaker === interaction.user.id;
             data.queue = data.queue.filter(id => id !== interaction.user.id);
-            if (wasSpeaker) { data.currentSpeaker = null; await handleNextSpeaker(interaction.channel, data); }
+            if (data.currentSpeaker === interaction.user.id) { data.currentSpeaker = null; await handleNextSpeaker(interaction.channel, data); }
         } else if (interaction.customId === 'finished') {
             if (interaction.user.id !== data.currentSpeaker) return interaction.reply({ content: "Not your turn!", ephemeral: true });
             await handleNextSpeaker(interaction.channel, data);
