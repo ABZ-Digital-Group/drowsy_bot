@@ -18,7 +18,9 @@ const client = new Client({
     ] 
 });
 
+// Ensure folders exist
 if (!fs.existsSync('./recordings')) fs.mkdirSync('./recordings');
+if (!fs.existsSync('./assets')) fs.mkdirSync('./assets');
 
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -30,7 +32,6 @@ const UPDATE_INTERVAL = 4000;
 
 const channelData = new Map();
 
-// --- PERMISSION CHECK ---
 function isAdmin(member) {
     const allowedRoles = ['Guards', 'Knights', 'Drowsy Defenders', 'God'];
     return member.roles.cache.some(role => allowedRoles.includes(role.name)) || member.guild.ownerId === member.id;
@@ -46,31 +47,41 @@ function getChannelData(channelId) {
     return channelData.get(channelId);
 }
 
-// --- RADIO LOGIC ---
+// --- RADIO LOGIC (WITH LOOP) ---
 async function startRadio(channel, data) {
     const vc = channel.guild.members.cache.get(client.user.id)?.voice.channel || 
                channel.guild.channels.cache.find(c => c.type === 2 && c.members.size > 0);
     
-    if (!vc) return console.log("No one in VC to play radio for.");
+    if (!vc) return console.log("📡 No VC found for radio.");
 
     data.voiceConnection = joinVoiceChannel({
         channelId: vc.id,
         guildId: channel.guild.id,
         adapterCreator: channel.guild.voiceAdapterCreator,
+        selfDeaf: false
     });
 
     const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play } });
     
-    // Check if the intermission file exists
-    if (fs.existsSync('./assets/intermission.mp3')) {
-        const resource = createAudioResource('./assets/intermission.mp3');
-        player.play(resource);
-        data.voiceConnection.subscribe(player);
-        data.radioPlayer = player;
-        await channel.send("📻 **Radio Mode Active:** Playing background vibes until the next singer is ready.");
-    } else {
-        console.log("Missing assets/intermission.mp3 - Radio skipped.");
-    }
+    const playTrack = () => {
+        if (fs.existsSync('./assets/intermission.mp3')) {
+            const resource = createAudioResource('./assets/intermission.mp3');
+            player.play(resource);
+            data.voiceConnection.subscribe(player);
+            data.radioPlayer = player;
+        }
+    };
+
+    // THE LOOP FIX
+    player.on(AudioPlayerStatus.Idle, () => {
+        if (data.radioPlayer) {
+            console.log("🔄 Radio track finished. Looping...");
+            playTrack();
+        }
+    });
+
+    playTrack();
+    await channel.send("📻 **Radio Mode:** Looping background vibes.");
 }
 
 function stopRadio(data) {
@@ -84,12 +95,12 @@ function stopRadio(data) {
 const commands = [
     new SlashCommandBuilder().setName('start-queue').setDescription('Start the event (Staff Only)'),
     new SlashCommandBuilder().setName('stop-queue').setDescription('Stop the event (Staff Only)'),
-    new SlashCommandBuilder().setName('next').setDescription('Move to next singer (Staff Only)'),
+    new SlashCommandBuilder().setName('next').setDescription('Move to next speaker (Staff Only)'),
     new SlashCommandBuilder().setName('radio').setDescription('Toggle background music manually')
 ].map(command => command.toJSON());
 
 client.once('ready', async () => {
-    console.log(`🎙️ Drowsy Vocals ULTRA is online!`);
+    console.log(`🎙️ Drowsy Vocals PRO-EDITION Online!`);
     const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
     try { await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands }); } catch (e) { console.error(e); }
 });
@@ -102,13 +113,13 @@ async function refreshPopup(channel) {
     }
     const embed = new EmbedBuilder()
         .setTitle("💤 Drowsy Speaker Queue")
-        .setDescription(`**Currently on the Mic:** ${data.currentSpeaker ? `<@${data.currentSpeaker}>` : "Open Mic"}\n\n**Up Next:**\n${data.queue.length > 0 ? data.queue.map((id, i) => `**${i+1}.** <@${id}>`).join('\n') : "*The queue is empty.*"}`)
+        .setDescription(`**Current Mic:** ${data.currentSpeaker ? `<@${data.currentSpeaker}>` : "Open Mic"}\n\n**Next:**\n${data.queue.length > 0 ? data.queue.map((id, i) => `**${i+1}.** <@${id}>`).join('\n') : "*The queue is empty.*"}`)
         .setColor(0x5865F2);
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('join').setLabel('Join Queue').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('leave').setLabel('Leave').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('finished').setLabel('Done Speaking 🏁').setStyle(ButtonStyle.Success)
+        new ButtonBuilder().setCustomId('finished').setLabel('Done 🏁').setStyle(ButtonStyle.Success)
     );
 
     const msg = await channel.send({ embeds: [embed], components: [row] });
@@ -117,7 +128,7 @@ async function refreshPopup(channel) {
 
 // --- HYPE & RECORDING SESSION ---
 async function startHypeSession(channel, data) {
-    stopRadio(data); // Music off, singer on!
+    stopRadio(data); 
     if (data.activeHypeCollector) data.activeHypeCollector.stop();
     
     let currentHype = 30; 
@@ -127,8 +138,8 @@ async function startHypeSession(channel, data) {
     const getHypeEmbed = (h, r) => {
         const bar = "🟦".repeat(Math.round(h/10)) + "⬛".repeat(10 - Math.round(h/10));
         return new EmbedBuilder()
-            .setTitle(r ? `🔴 RECORDING LIVE: <@${speakerId}>` : `🎶 NOW PERFORMING: <@${speakerId}>`)
-            .setDescription(`**Hype Meter:**\n${bar} **${h}%**\n\n*Audience: Cheer! Singer: Hit Record!*`)
+            .setTitle(r ? `🔴 RECORDING LIVE: <@${speakerId}>` : `🎶 NOW SINGING: <@${speakerId}>`)
+            .setDescription(`**Hype Meter:**\n${bar} **${h}%**\n\n*Singer: Hit Record for a high-quality demo!*`)
             .setColor(r ? 0xff0000 : (h > 80 ? 0xFEE75C : 0x5865F2));
     };
 
@@ -138,8 +149,8 @@ async function startHypeSession(channel, data) {
         new ButtonBuilder().setCustomId(`hype_r`).setLabel('⏺️ Record Me').setStyle(ButtonStyle.Danger)
     );
 
-    const hypeMsg = await channel.send({ content: `🎙️ **Mic check! <@${speakerId}> is up!**`, embeds: [getHypeEmbed(currentHype, false)], components: [row] });
-    const collector = hypeMsg.createMessageComponentCollector({ time: 600000 });
+    const hypeMsg = await channel.send({ content: `🎙️ **Attention! <@${speakerId}> is on stage!**`, embeds: [getHypeEmbed(currentHype, false)], components: [row] });
+    const collector = hypeMsg.createMessageComponentCollector({ time: 900000 }); // 15 mins
     data.activeHypeCollector = collector;
 
     const loop = setInterval(async () => {
@@ -150,14 +161,17 @@ async function startHypeSession(channel, data) {
 
     collector.on('collect', async i => {
         if (i.customId === 'hype_r') {
-            if (i.user.id !== speakerId) return i.reply({ content: "Singer only!", ephemeral: true });
+            if (i.user.id !== speakerId) return i.reply({ content: "Only the singer can record!", ephemeral: true });
+            if (isRecording) return i.reply({ content: "Already recording!", ephemeral: true });
+
             const vc = i.member.voice.channel;
-            if (!vc) return i.reply({ content: "Join VC!", ephemeral: true });
+            if (!vc) return i.reply({ content: "Join VC first!", ephemeral: true });
 
             isRecording = true;
-            await i.reply({ content: "🔴 Recording... MP3 will be DMed after.", ephemeral: true });
+            await i.reply({ content: "🔴 Recording... I will DM you the MP3 when your turn ends!", ephemeral: true });
             
             data.voiceConnection = joinVoiceChannel({ channelId: vc.id, guildId: i.guild.id, adapterCreator: i.guild.voiceAdapterCreator, selfDeaf: false });
+            
             const fileName = `./recordings/${speakerId}-${Date.now()}.mp3`;
             const outStream = fs.createWriteStream(fileName);
             const opusStream = data.voiceConnection.receiver.subscribe(speakerId, { end: { behavior: EndBehaviorType.Manual } });
@@ -166,10 +180,17 @@ async function startHypeSession(channel, data) {
             opusStream.pipe(transcoder).pipe(outStream);
 
             collector.once('end', () => {
-                opusStream.destroy(); outStream.end();
-                setTimeout(async () => {
-                    try { const user = await client.users.fetch(speakerId); await user.send({ content: "🎁 Your Demo:", files: [fileName] }); } catch (e) {}
-                }, 2000);
+                // THE RECORDING BUFFER FIX: Wait 2.5s to flush audio
+                setTimeout(() => {
+                    opusStream.destroy();
+                    outStream.end();
+                    setTimeout(async () => {
+                        try {
+                            const user = await client.users.fetch(speakerId);
+                            await user.send({ content: "🎁 Here is your Drowsy Vocals Demo!", files: [fileName] });
+                        } catch (e) { console.log("DM failed."); }
+                    }, 2000);
+                }, 2500);
             });
         } else if (i.customId.startsWith('hype_')) {
             currentHype = Math.min(currentHype + 8, MAX_HYPE);
@@ -187,7 +208,7 @@ async function handleNextSpeaker(channel, data) {
     } else {
         data.currentSpeaker = null;
         if (data.activeHypeCollector) data.activeHypeCollector.stop();
-        await startRadio(channel, data); // No singers left? Play radio!
+        await startRadio(channel, data); 
     }
 }
 
@@ -207,14 +228,14 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'start-queue') {
             await refreshPopup(interaction.channel);
             await startRadio(interaction.channel, data);
-            await interaction.editReply("Started!");
+            await interaction.editReply("Event Started!");
         } else if (commandName === 'next') {
             await handleNextSpeaker(interaction.channel, data);
             await refreshPopup(interaction.channel);
-            await interaction.editReply("Next Up!");
+            await interaction.editReply("Moved to next!");
         } else if (commandName === 'radio') {
             data.radioPlayer ? stopRadio(data) : await startRadio(interaction.channel, data);
-            await interaction.editReply("Radio Toggled!");
+            await interaction.editReply("Radio Toggled.");
         } else if (commandName === 'stop-queue') {
             stopRadio(data);
             if (data.voiceConnection) data.voiceConnection.destroy();
