@@ -270,4 +270,4 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-client.login(BOT_TOKEN);
+client.login(process.env.DISCORD_TOKEN);
