@@ -269,5 +269,5 @@ client.on('interactionCreate', async interaction => {
         await refreshPopup(interaction.channel);
     }
 });
-
+``
 client.login(process.env.DISCORD_TOKEN);
