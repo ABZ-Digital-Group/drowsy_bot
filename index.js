@@ -217,15 +217,22 @@ async function handleNextSpeaker(channel, data) {
 }
 
 // --- ALLOWLIST FOR INVITE LINKS ---
-const ALLOW_INVITE_PASSWORD = "26#~7Ru1Fjms=+p&>y"; // Change this password as needed
+const ALLOW_INVITE_PASSWORD = "26#~7Ru1Fjms=+p&>y";
+console.log("Invite password is:", ALLOW_INVITE_PASSWORD);
 const allowedInviteUsers = new Set();
 
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
+    // Debug log for DM handling
+    if (message.channel.type === ChannelType.DM) {
+        console.log(`DM received from ${message.author.username}:`, message.content);
+    }
+
     // DM command to allow invite links
     if (message.channel.type === ChannelType.DM && message.content.startsWith('!allowinvite ')) {
         const input = message.content.slice('!allowinvite '.length).trim();
+        console.log("Password provided:", input);
         if (input === ALLOW_INVITE_PASSWORD) {
             allowedInviteUsers.add(message.author.id);
             await message.reply('✅ You are now allowed to send Discord invite links in the server.');
