@@ -27,16 +27,51 @@ if (!fs.existsSync('./assets')) fs.mkdirSync('./assets');
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
+const ALLOW_INVITE_PASSWORD = process.env.ALLOW_INVITE_PASSWORD?.trim();
+const INVITE_REGEX = /(https?:\/\/)?(www\.)?(discord\.gg|discord(?:app)?\.com\/invite)\/[A-Za-z0-9-]+/i;
 
 const MAX_HYPE = 100;
 const DECAY_RATE = 3; 
 const UPDATE_INTERVAL = 4000; 
+const ALLOWED_INVITE_USERS_FILE = './allowed-invite-users.json';
+const DEFAULT_PURGE_SCAN_LIMIT = 250;
+const MAX_PURGE_SCAN_LIMIT = 1000;
 
 // This Map stores EVERYTHING unique to each text channel
 const channelData = new Map();
 
+function loadAllowedInviteUsers() {
+    if (!fs.existsSync(ALLOWED_INVITE_USERS_FILE)) return new Set();
+
+    try {
+        const raw = fs.readFileSync(ALLOWED_INVITE_USERS_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        return new Set(Array.isArray(parsed) ? parsed : []);
+    } catch (error) {
+        console.error('Failed to load allowed invite users:', error);
+        return new Set();
+    }
+}
+
+function saveAllowedInviteUsers(users) {
+    try {
+        fs.writeFileSync(ALLOWED_INVITE_USERS_FILE, JSON.stringify([...users], null, 2));
+    } catch (error) {
+        console.error('Failed to save allowed invite users:', error);
+    }
+}
+
 function privateReply(content) {
     return { content, flags: MessageFlags.Ephemeral };
+}
+
+function containsInviteLink(content) {
+    return INVITE_REGEX.test(content);
+}
+
+function canPostInviteLinkInGuild(guild, userId) {
+    if (!guild) return false;
+    return guild.ownerId === userId || allowedInviteUsers.has(userId);
 }
 
 function isAdmin(member) {
@@ -104,7 +139,17 @@ const commands = [
     new SlashCommandBuilder().setName('start-queue').setDescription('Launch a stage in this channel (Staff Only)'),
     new SlashCommandBuilder().setName('stop-queue').setDescription('Shutdown this stage (Staff Only)'),
     new SlashCommandBuilder().setName('next').setDescription('Next performer (Staff Only)'),
-    new SlashCommandBuilder().setName('radio').setDescription('Toggle background vibes manually')
+    new SlashCommandBuilder().setName('radio').setDescription('Toggle background vibes manually'),
+    new SlashCommandBuilder()
+        .setName('purge-invites')
+        .setDescription('Scan text channels and delete existing unauthorized Discord invites (Staff Only)')
+        .addIntegerOption(option =>
+            option
+                .setName('messages_per_channel')
+                .setDescription('How many recent messages to scan per channel (default 250, max 1000)')
+                .setMinValue(1)
+                .setMaxValue(MAX_PURGE_SCAN_LIMIT)
+        )
 ].map(command => command.toJSON());
 
 client.once('clientReady', async () => {
@@ -217,28 +262,81 @@ async function handleNextSpeaker(channel, data) {
     }
 }
 
+async function purgeInviteLinksInChannel(channel, guild, scanLimit) {
+    let lastMessageId;
+    let scannedMessages = 0;
+    let deletedMessages = 0;
+
+    while (scannedMessages < scanLimit) {
+        const batchSize = Math.min(100, scanLimit - scannedMessages);
+        const messages = await channel.messages.fetch({ limit: batchSize, before: lastMessageId });
+        if (messages.size === 0) break;
+
+        for (const message of messages.values()) {
+            if (message.author.bot) continue;
+            if (!containsInviteLink(message.content)) continue;
+            if (canPostInviteLinkInGuild(guild, message.author.id)) continue;
+
+            try {
+                await message.delete();
+                deletedMessages += 1;
+            } catch (error) {
+                console.error(`Failed to delete invite link in #${channel.name}:`, error);
+            }
+        }
+
+        scannedMessages += messages.size;
+        lastMessageId = messages.last()?.id;
+        if (!lastMessageId) break;
+    }
+
+    return { scannedMessages, deletedMessages };
+}
+
+async function purgeInviteLinksInGuild(guild, scanLimit) {
+    const botMember = guild.members.me ?? await guild.members.fetchMe();
+    const channels = guild.channels.cache.filter(channel =>
+        channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement
+    );
+
+    let scannedChannels = 0;
+    let skippedChannels = 0;
+    let scannedMessages = 0;
+    let deletedMessages = 0;
+
+    for (const channel of channels.values()) {
+        const permissions = channel.permissionsFor(botMember);
+        if (!permissions?.has(['ViewChannel', 'ReadMessageHistory', 'ManageMessages'])) {
+            skippedChannels += 1;
+            continue;
+        }
+
+        scannedChannels += 1;
+        const result = await purgeInviteLinksInChannel(channel, guild, scanLimit);
+        scannedMessages += result.scannedMessages;
+        deletedMessages += result.deletedMessages;
+    }
+
+    return { scannedChannels, skippedChannels, scannedMessages, deletedMessages };
+}
+
 // --- ALLOWLIST FOR INVITE LINKS ---
-const ALLOW_INVITE_PASSWORD = "26#~7Ru1Fjms=+p&>y";
-console.log("Invite password is:", ALLOW_INVITE_PASSWORD);
-const allowedInviteUsers = new Set();
+const allowedInviteUsers = loadAllowedInviteUsers();
 
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
-    // Debug log for all messages
-    console.log(`[${message.channel.type === ChannelType.DM ? 'DM' : 'Guild'}] ${message.author.username}:`, message.content);
-
-    // Debug log for DM handling
-    if (message.channel.type === ChannelType.DM) {
-        console.log(`DM received from ${message.author.username}:`, message.content);
-    }
-
     // DM command to allow invite links
     if (message.channel.type === ChannelType.DM && message.content.startsWith('!allowinvite ')) {
+        if (!ALLOW_INVITE_PASSWORD) {
+            await message.reply('❌ Invite password is not configured right now.');
+            return;
+        }
+
         const input = message.content.slice('!allowinvite '.length).trim();
-        console.log("Password provided:", input);
         if (input === ALLOW_INVITE_PASSWORD) {
             allowedInviteUsers.add(message.author.id);
+            saveAllowedInviteUsers(allowedInviteUsers);
             await message.reply('✅ You are now allowed to send Discord invite links in the server.');
         } else {
             await message.reply('❌ Incorrect password.');
@@ -246,13 +344,10 @@ client.on('messageCreate', async message => {
         return;
     }
 
-    // Regex for Discord invite links
-    const inviteRegex = /(discord\.gg\/\w+|discord\.com\/invite\/\w+)/i;
-    if (inviteRegex.test(message.content)) {
+    if (containsInviteLink(message.content)) {
         try {
             const guild = message.guild;
-            // Allow server owner or allowed users
-            if ((guild && message.author.id === guild.ownerId) || allowedInviteUsers.has(message.author.id)) return;
+            if (!guild || canPostInviteLinkInGuild(guild, message.author.id)) return;
             await message.delete();
             const warning = await message.channel.send('🚫 Invite links are not allowed!');
             setTimeout(() => warning.delete().catch(() => {}), 5000);
@@ -288,6 +383,16 @@ client.on('interactionCreate', async interaction => {
         if (interaction.commandName === 'radio') {
             data.radioPlayer ? stopRadio(data) : await startRadio(interaction.channel, data);
             return interaction.reply(privateReply("📻 Radio toggled."));
+        }
+
+        if (interaction.commandName === 'purge-invites') {
+            const scanLimit = interaction.options.getInteger('messages_per_channel') ?? DEFAULT_PURGE_SCAN_LIMIT;
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+            const result = await purgeInviteLinksInGuild(interaction.guild, scanLimit);
+            return interaction.editReply(
+                `🧹 Invite cleanup finished. Scanned ${result.scannedChannels} channels, skipped ${result.skippedChannels}, checked ${result.scannedMessages} messages, and deleted ${result.deletedMessages} invite links.`
+            );
         }
 
         if (interaction.commandName === 'stop-queue') {
