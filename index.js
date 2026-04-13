@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { 
     Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, 
-    ButtonStyle, EmbedBuilder, REST, Routes, SlashCommandBuilder 
+    ButtonStyle, EmbedBuilder, MessageFlags, REST, Routes, SlashCommandBuilder 
 } = require('discord.js');
 const { 
     joinVoiceChannel, EndBehaviorType, createAudioPlayer, 
@@ -33,6 +33,10 @@ const UPDATE_INTERVAL = 4000;
 
 // This Map stores EVERYTHING unique to each text channel
 const channelData = new Map();
+
+function privateReply(content) {
+    return { content, flags: MessageFlags.Ephemeral };
+}
 
 function isAdmin(member) {
     const allowedRoles = ['Guards', 'Knights', 'Drowsy Defenders', 'God'];
@@ -102,7 +106,7 @@ const commands = [
     new SlashCommandBuilder().setName('radio').setDescription('Toggle background vibes manually')
 ].map(command => command.toJSON());
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log(`🎙️ Drowsy Multi-Stage Hub Online!`);
     const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
     try { await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands }); } catch (e) { console.error(e); }
@@ -166,11 +170,11 @@ async function startHypeSession(channel, data) {
 
     collector.on('collect', async i => {
         if (i.customId === 'hype_r') {
-            if (i.user.id !== speakerId) return i.reply({ content: "Only the singer can record!", ephemeral: true });
-            if (isRecording) return i.reply({ content: "Recording already active!", ephemeral: true });
+            if (i.user.id !== speakerId) return i.reply(privateReply("Only the singer can record!"));
+            if (isRecording) return i.reply(privateReply("Recording already active!"));
 
             isRecording = true;
-            await i.reply({ content: "🔴 Recording... Your demo will be DMed when your set ends!", ephemeral: true });
+            await i.reply(privateReply("🔴 Recording... Your demo will be DMed when your set ends!"));
             
             const fileName = `./recordings/${speakerId}-${Date.now()}.mp3`;
             const outStream = fs.createWriteStream(fileName);
@@ -252,56 +256,60 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isChatInputCommand()) {
         const member = await interaction.guild.members.fetch(interaction.user.id);
-        if (!isAdmin(member)) return interaction.reply({ content: "Staff Only.", ephemeral: true });
+        if (!isAdmin(member)) return interaction.reply(privateReply("Staff Only."));
 
         if (interaction.commandName === 'start-queue') {
-            if (!member.voice.channel) return interaction.reply({ content: "❌ Error: Join the Voice Channel you want me to host in first!", ephemeral: true });
+            if (!member.voice.channel) return interaction.reply(privateReply("❌ Error: Join the Voice Channel you want me to host in first!"));
             
             data.targetVC = member.voice.channelId;
             await refreshPopup(interaction.channel);
             await startRadio(interaction.channel, data);
-            return interaction.reply({ content: `✅ Stage initialized for <#${data.targetVC}>`, ephemeral: true });
+            return interaction.reply(privateReply(`✅ Stage initialized for <#${data.targetVC}>`));
         }
 
         if (interaction.commandName === 'next') {
             await handleNextSpeaker(interaction.channel, data);
             await refreshPopup(interaction.channel);
-            return interaction.reply({ content: "➡️ Mic passed!", ephemeral: true });
+            return interaction.reply(privateReply("➡️ Mic passed!"));
         }
 
         if (interaction.commandName === 'radio') {
             data.radioPlayer ? stopRadio(data) : await startRadio(interaction.channel, data);
-            return interaction.reply({ content: "📻 Radio toggled.", ephemeral: true });
+            return interaction.reply(privateReply("📻 Radio toggled."));
         }
 
         if (interaction.commandName === 'stop-queue') {
             stopRadio(data);
             if (data.voiceConnection) data.voiceConnection.destroy();
             channelData.delete(interaction.channelId);
-            return interaction.reply({ content: "🏁 Event finished. Connection closed.", ephemeral: true });
+            return interaction.reply(privateReply("🏁 Event finished. Connection closed."));
         }
     }
 
     if (interaction.isButton()) {
+        if (interaction.customId.startsWith('hype_')) return;
+
         const member = await interaction.guild.members.fetch(interaction.user.id);
         if (interaction.customId === 'join') {
             if (!member.voice.channel || member.voice.channelId !== data.targetVC) 
-                return interaction.reply({ content: `❌ You must be in <#${data.targetVC}> to join this specific queue!`, ephemeral: true });
+                return interaction.reply(privateReply(`❌ You must be in <#${data.targetVC}> to join this specific queue!`));
             
             if (data.queue.includes(interaction.user.id) || data.currentSpeaker === interaction.user.id) 
-                return interaction.reply({ content: "You're already in the lineup!", ephemeral: true });
+                return interaction.reply(privateReply("You're already in the lineup!"));
             
             data.queue.push(interaction.user.id);
         } else if (interaction.customId === 'leave') {
             data.queue = data.queue.filter(id => id !== interaction.user.id);
             if (data.currentSpeaker === interaction.user.id) { data.currentSpeaker = null; await handleNextSpeaker(interaction.channel, data); }
         } else if (interaction.customId === 'finished') {
-            if (interaction.user.id !== data.currentSpeaker) return interaction.reply({ content: "Not your turn!", ephemeral: true });
+            if (interaction.user.id !== data.currentSpeaker) return interaction.reply(privateReply("Not your turn!"));
             await handleNextSpeaker(interaction.channel, data);
+        } else {
+            return;
         }
         await interaction.deferUpdate();
         await refreshPopup(interaction.channel);
     }
 });
-``
+
 client.login(process.env.DISCORD_TOKEN);
