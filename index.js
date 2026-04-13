@@ -212,6 +212,40 @@ async function handleNextSpeaker(channel, data) {
     }
 }
 
+// --- ALLOWLIST FOR INVITE LINKS ---
+const ALLOW_INVITE_PASSWORD = 'letmein123'; // Change this password as needed
+const allowedInviteUsers = new Set();
+
+client.on('messageCreate', async message => {
+    if (message.author.bot) return;
+
+    // DM command to allow invite links
+    if (message.channel.type === 1 && message.content.startsWith('!allowinvite ')) {
+        const input = message.content.slice('!allowinvite '.length).trim();
+        if (input === ALLOW_INVITE_PASSWORD) {
+            allowedInviteUsers.add(message.author.id);
+            await message.reply('✅ You are now allowed to send Discord invite links in the server.');
+        } else {
+            await message.reply('❌ Incorrect password.');
+        }
+        return;
+    }
+
+    // Regex for Discord invite links
+    const inviteRegex = /(discord\.gg\/\w+|discord\.com\/invite\/\w+)/i;
+    if (inviteRegex.test(message.content)) {
+        try {
+            const guild = message.guild;
+            // Allow server owner or allowed users
+            if ((guild && message.author.id === guild.ownerId) || allowedInviteUsers.has(message.author.id)) return;
+            await message.delete();
+            await message.channel.send({ content: `🚫 Invite links are not allowed!`, ephemeral: true });
+        } catch (e) {
+            // Ignore errors (e.g., missing permissions)
+        }
+    }
+});
+
 client.on('interactionCreate', async interaction => {
     if (!interaction.guild) return;
     const data = getChannelData(interaction.channelId);
