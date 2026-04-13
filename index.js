@@ -217,7 +217,7 @@ async function handleNextSpeaker(channel, data) {
 }
 
 // --- ALLOWLIST FOR INVITE LINKS ---
-const ALLOW_INVITE_PASSWORD = process.env.ALLOW_INVITE_PASSWORD; // Change this password as needed
+const ALLOW_INVITE_PASSWORD = "26#~7Ru1Fjms=+p&>y"; // Change this password as needed
 const allowedInviteUsers = new Set();
 
 client.on('messageCreate', async message => {
