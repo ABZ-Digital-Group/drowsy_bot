@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { 
     Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, 
-    ButtonStyle, EmbedBuilder, MessageFlags, REST, Routes, SlashCommandBuilder 
+    ButtonStyle, EmbedBuilder, MessageFlags, REST, Routes, SlashCommandBuilder, ChannelType
 } = require('discord.js');
 const { 
     joinVoiceChannel, EndBehaviorType, createAudioPlayer, 
@@ -224,7 +224,7 @@ client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
     // DM command to allow invite links
-    if (message.channel.type === 1 && message.content.startsWith('!allowinvite ')) {
+    if (message.channel.type === ChannelType.DM && message.content.startsWith('!allowinvite ')) {
         const input = message.content.slice('!allowinvite '.length).trim();
         if (input === ALLOW_INVITE_PASSWORD) {
             allowedInviteUsers.add(message.author.id);
