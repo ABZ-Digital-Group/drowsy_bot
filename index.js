@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { 
     Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, 
-    ButtonStyle, EmbedBuilder, MessageFlags, REST, Routes, SlashCommandBuilder, ChannelType
+    ButtonStyle, EmbedBuilder, MessageFlags, REST, Routes, SlashCommandBuilder, ChannelType, Partials
 } = require('discord.js');
 const { 
     joinVoiceChannel, EndBehaviorType, createAudioPlayer, 
@@ -15,8 +15,9 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, 
         GatewayIntentBits.MessageContent, GatewayIntentBits.GuildVoiceStates, 
-        GatewayIntentBits.GuildMembers 
-    ] 
+        GatewayIntentBits.GuildMembers, GatewayIntentBits.DirectMessages
+    ],
+    partials: [Partials.Channel]
 });
 
 // Setup Folders
@@ -253,9 +254,10 @@ client.on('messageCreate', async message => {
             // Allow server owner or allowed users
             if ((guild && message.author.id === guild.ownerId) || allowedInviteUsers.has(message.author.id)) return;
             await message.delete();
-            await message.channel.send({ content: `🚫 Invite links are not allowed!`, ephemeral: true });
+            const warning = await message.channel.send('🚫 Invite links are not allowed!');
+            setTimeout(() => warning.delete().catch(() => {}), 5000);
         } catch (e) {
-            // Ignore errors (e.g., missing permissions)
+            console.error('Invite moderation failed:', e);
         }
     }
 });
