@@ -106,7 +106,7 @@ const commands = [
     new SlashCommandBuilder().setName('radio').setDescription('Toggle background vibes manually')
 ].map(command => command.toJSON());
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log(`🎙️ Drowsy Multi-Stage Hub Online!`);
     const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
     try { await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands }); } catch (e) { console.error(e); }
