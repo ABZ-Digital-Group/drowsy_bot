@@ -224,6 +224,9 @@ const allowedInviteUsers = new Set();
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
+    // Debug log for all messages
+    console.log(`[${message.channel.type === ChannelType.DM ? 'DM' : 'Guild'}] ${message.author.username}:`, message.content);
+
     // Debug log for DM handling
     if (message.channel.type === ChannelType.DM) {
         console.log(`DM received from ${message.author.username}:`, message.content);
