@@ -164,8 +164,8 @@ function buildCommands() {
                     .setName('ban')
                     .setDescription('Ban a member')
                     .addUserOption(option => option.setName('member').setDescription('Member to ban').setRequired(true))
-                    .addIntegerOption(option => option.setName('delete_days').setDescription('Delete message history in days').setMinValue(0).setMaxValue(7))
                     .addStringOption(option => option.setName('reason').setDescription('Reason').setRequired(true))
+                        .addIntegerOption(option => option.setName('delete_days').setDescription('Delete message history in days').setMinValue(0).setMaxValue(7))
             )
             .addSubcommand(subcommand =>
                 subcommand
