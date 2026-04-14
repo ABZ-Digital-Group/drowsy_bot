@@ -1,7 +1,8 @@
 require('dotenv').config();
 const { 
     Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, 
-    ButtonStyle, EmbedBuilder, MessageFlags, REST, Routes, SlashCommandBuilder, ChannelType, Partials
+    ButtonStyle, EmbedBuilder, MessageFlags, REST, Routes, SlashCommandBuilder, ChannelType, Partials,
+    GuildScheduledEventStatus
 } = require('discord.js');
 const { 
     joinVoiceChannel, EndBehaviorType, createAudioPlayer, 
@@ -15,7 +16,8 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, 
         GatewayIntentBits.MessageContent, GatewayIntentBits.GuildVoiceStates, 
-        GatewayIntentBits.GuildMembers, GatewayIntentBits.DirectMessages
+        GatewayIntentBits.GuildMembers, GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildScheduledEvents
     ],
     partials: [Partials.Channel]
 });
@@ -79,6 +81,34 @@ function isAdmin(member) {
     return member.roles.cache.some(role => allowedRoles.includes(role.name)) || member.guild.ownerId === member.id;
 }
 
+async function fetchActiveEventLinks(guild) {
+    const scheduledEvents = await guild.scheduledEvents.fetch();
+    return [...scheduledEvents.values()]
+        .filter(event =>
+            event.status === GuildScheduledEventStatus.Scheduled
+            || event.status === GuildScheduledEventStatus.Active
+        )
+        .sort((left, right) => {
+            const leftStart = left.scheduledStartTimestamp ?? Number.MAX_SAFE_INTEGER;
+            const rightStart = right.scheduledStartTimestamp ?? Number.MAX_SAFE_INTEGER;
+            return leftStart - rightStart;
+        })
+        .map(event => `https://discord.com/events/${guild.id}/${event.id}`);
+}
+
+async function sendActiveEvents(target, guild) {
+    const eventLinks = await fetchActiveEventLinks(guild);
+    if (eventLinks.length === 0) {
+        const noEventsMessage = 'There are no live or upcoming server events right now.';
+        if ('reply' in target) return target.reply(noEventsMessage);
+        return target.send(noEventsMessage);
+    }
+
+    const payload = eventLinks.join('\n');
+    if ('reply' in target) return target.reply(payload);
+    return target.send(payload);
+}
+
 function getChannelData(channelId) {
     if (!channelData.has(channelId)) {
         channelData.set(channelId, { 
@@ -140,6 +170,7 @@ const commands = [
     new SlashCommandBuilder().setName('stop-queue').setDescription('Shutdown this stage (Staff Only)'),
     new SlashCommandBuilder().setName('next').setDescription('Next performer (Staff Only)'),
     new SlashCommandBuilder().setName('radio').setDescription('Toggle background vibes manually'),
+    new SlashCommandBuilder().setName('events').setDescription('Post links for live and upcoming server events'),
     new SlashCommandBuilder()
         .setName('allow-invites')
         .setDescription('Allow a user or bot to post Discord invite links (Staff Only)')
@@ -344,6 +375,16 @@ const allowedInviteUsers = loadAllowedInviteUsers();
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
+    if (message.guild && message.content.trim().toLowerCase() === '-events') {
+        try {
+            await sendActiveEvents(message, message.guild);
+        } catch (error) {
+            console.error('Event lookup failed:', error);
+            await message.reply('❌ I could not fetch the server events right now.');
+        }
+        return;
+    }
+
     // DM command to allow invite links
     if (message.channel.type === ChannelType.DM && message.content.startsWith('!allowinvite ')) {
         if (!ALLOW_INVITE_PASSWORD) {
@@ -380,6 +421,17 @@ client.on('interactionCreate', async interaction => {
     const data = getChannelData(interaction.channelId);
 
     if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === 'events') {
+            try {
+                await sendActiveEvents(interaction, interaction.guild);
+            } catch (error) {
+                console.error('Slash event lookup failed:', error);
+                const replyMethod = interaction.deferred || interaction.replied ? 'editReply' : 'reply';
+                return interaction[replyMethod]('❌ I could not fetch the server events right now.');
+            }
+            return;
+        }
+
         const member = await interaction.guild.members.fetch(interaction.user.id);
         if (!isAdmin(member)) return interaction.reply(privateReply("Staff Only."));
 
