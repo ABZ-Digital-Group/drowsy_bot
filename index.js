@@ -141,6 +141,24 @@ const commands = [
     new SlashCommandBuilder().setName('next').setDescription('Next performer (Staff Only)'),
     new SlashCommandBuilder().setName('radio').setDescription('Toggle background vibes manually'),
     new SlashCommandBuilder()
+        .setName('allow-invites')
+        .setDescription('Allow a user or bot to post Discord invite links (Staff Only)')
+        .addUserOption(option =>
+            option
+                .setName('target')
+                .setDescription('User or bot to allow')
+                .setRequired(true)
+        ),
+    new SlashCommandBuilder()
+        .setName('revoke-invites')
+        .setDescription('Remove invite link permission from a user or bot (Staff Only)')
+        .addUserOption(option =>
+            option
+                .setName('target')
+                .setDescription('User or bot to remove')
+                .setRequired(true)
+        ),
+    new SlashCommandBuilder()
         .setName('purge-invites')
         .setDescription('Scan text channels and delete existing unauthorized Discord invites (Staff Only)')
         .addIntegerOption(option =>
@@ -383,6 +401,26 @@ client.on('interactionCreate', async interaction => {
         if (interaction.commandName === 'radio') {
             data.radioPlayer ? stopRadio(data) : await startRadio(interaction.channel, data);
             return interaction.reply(privateReply("📻 Radio toggled."));
+        }
+
+        if (interaction.commandName === 'allow-invites') {
+            const target = interaction.options.getUser('target', true);
+            allowedInviteUsers.add(target.id);
+            saveAllowedInviteUsers(allowedInviteUsers);
+            return interaction.reply(privateReply(`✅ <@${target.id}> can now post Discord invite links.`));
+        }
+
+        if (interaction.commandName === 'revoke-invites') {
+            const target = interaction.options.getUser('target', true);
+            const removed = allowedInviteUsers.delete(target.id);
+            if (removed) saveAllowedInviteUsers(allowedInviteUsers);
+            return interaction.reply(
+                privateReply(
+                    removed
+                        ? `✅ Removed invite link permission for <@${target.id}>.`
+                        : `ℹ️ <@${target.id}> was not on the invite allowlist.`
+                )
+            );
         }
 
         if (interaction.commandName === 'purge-invites') {
