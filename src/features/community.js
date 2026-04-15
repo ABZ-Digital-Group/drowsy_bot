@@ -35,7 +35,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     const activeVoiceSessions = new Map();
 
     function buildAddMoneyCommand(balanceTarget, userId, amount) {
-        const commandParts = ['!add-money'];
+        const commandParts = [`${config.UNBELIEVABOAT_PREFIX}add-money`];
         if (balanceTarget) commandParts.push(balanceTarget);
         commandParts.push(`<@${userId}>`, String(amount));
         return commandParts.join(' ');

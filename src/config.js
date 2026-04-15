@@ -11,6 +11,7 @@ module.exports = {
     CLIENT_ID: process.env.CLIENT_ID,
     GUILD_ID: process.env.GUILD_ID,
     ALLOW_INVITE_PASSWORD: process.env.ALLOW_INVITE_PASSWORD?.trim(),
+    UNBELIEVABOAT_PREFIX: process.env.UNBELIEVABOAT_PREFIX?.trim() || '!',
     INVITE_REGEX: /(https?:\/\/)?(www\.)?(discord\.gg|discord(?:app)?\.com\/(invite|events))\/[A-Za-z0-9-]+(?:\/[A-Za-z0-9-]+)?/i,
     MAX_HYPE: 100,
     DECAY_RATE: 3,

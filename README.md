@@ -52,6 +52,7 @@ DISCORD_TOKEN=your_bot_token
 CLIENT_ID=your_application_id
 GUILD_ID=your_server_id
 ALLOW_INVITE_PASSWORD=optional_dm_password
+UNBELIEVABOAT_PREFIX=!!
 ```
 
 ### Variable Reference
@@ -60,6 +61,7 @@ ALLOW_INVITE_PASSWORD=optional_dm_password
 - `CLIENT_ID`: Discord application ID used to register guild commands
 - `GUILD_ID`: guild where slash commands are registered
 - `ALLOW_INVITE_PASSWORD`: optional password used by the DM command `!allowinvite <password>`
+- `UNBELIEVABOAT_PREFIX`: prefix used when relaying economy commands to UnbelievaBoat, for example `!` or `!!`
 
 ## Discord Intents
 
@@ -209,6 +211,8 @@ The bot includes a staff-only helper for formatting UnbelievaBoat's economy gran
 ### Important Limitation
 
 This bot does not execute UnbelievaBoat commands directly. It formats the command for staff to paste manually, because bots generally do not process prefix commands sent by other bots.
+
+If your server uses a custom UnbelievaBoat prefix such as `!!`, set `UNBELIEVABOAT_PREFIX` in `.env` so the relayed command matches your server configuration.
 
 ## Server Stats System
 
