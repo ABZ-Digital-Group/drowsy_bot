@@ -34,6 +34,25 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     const statsRefreshTimers = new Map();
     const activeVoiceSessions = new Map();
 
+    function buildAddMoneyCommand(balanceTarget, userId, amount) {
+        const commandParts = ['!add-money'];
+        if (balanceTarget) commandParts.push(balanceTarget);
+        commandParts.push(`<@${userId}>`, String(amount));
+        return commandParts.join(' ');
+    }
+
+    function parseAddMoneyMessage(content) {
+        const trimmed = content.trim();
+        const match = trimmed.match(/^add-money(?:\s+(cash|bank))?\s+(<@!?(\d{17,20})>|(\d{17,20}))\s+(\d+)$/i);
+        if (!match) return null;
+
+        return {
+            balanceTarget: match[1]?.toLowerCase() ?? null,
+            userId: match[3] ?? match[4],
+            amount: Number(match[5]),
+        };
+    }
+
     function getDateKey(timestamp = Date.now()) {
         return new Date(timestamp).toISOString().slice(0, 10);
     }
@@ -582,6 +601,20 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         if (message.author.bot) return;
         if (message.guild) trackMessageStats(message);
 
+        if (message.guild) {
+            const addMoneyCommand = parseAddMoneyMessage(message.content);
+            if (addMoneyCommand) {
+                if (!helpers.isStaff(message.member)) {
+                    await message.reply('Staff only.');
+                    return;
+                }
+
+                const relayedCommand = buildAddMoneyCommand(addMoneyCommand.balanceTarget, addMoneyCommand.userId, addMoneyCommand.amount);
+                await message.channel.send(relayedCommand);
+                return;
+            }
+        }
+
         if (message.guild && message.content.trim().toLowerCase() === '-events') {
             try {
                 await sendActiveEvents(message, message.guild);
@@ -766,15 +799,10 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             const balanceTarget = interaction.options.getString('target');
             const targetUser = interaction.options.getUser('member', true);
             const amount = interaction.options.getInteger('amount', true);
-            const commandParts = ['!add-money'];
-            if (balanceTarget) commandParts.push(balanceTarget);
-            commandParts.push(`<@${targetUser.id}>`, String(amount));
+            const relayedCommand = buildAddMoneyCommand(balanceTarget, targetUser.id, amount);
 
-            await interaction.reply(helpers.privateReply([
-                'Run this UnbelievaBoat command manually in a channel it can read:',
-                `\`${commandParts.join(' ')}\``,
-                'This bot formats the command for you, but it cannot force the other bot to execute it.',
-            ].join('\n')));
+            await interaction.channel.send(relayedCommand);
+            await interaction.reply(helpers.privateReply(`Relayed ${relayedCommand}`));
             return;
         }
 
