@@ -9,6 +9,61 @@ function buildCommands() {
         new SlashCommandBuilder().setName('radio').setDescription('Toggle the background track (Staff Only)'),
         new SlashCommandBuilder().setName('events').setDescription('Post links for live and upcoming server events'),
         new SlashCommandBuilder()
+            .setName('server-stats')
+            .setDescription('Show and manage server stats channels')
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('user')
+                    .setDescription('Show activity stats for a member')
+                    .addUserOption(option => option.setName('member').setDescription('Member to inspect'))
+            )
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('show')
+                    .setDescription('Show the current server stats summary')
+            )
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('channel')
+                    .setDescription('Assign a stat metric to an auto-updating channel')
+                    .addStringOption(option => option.setName('metric').setDescription('Metric to show').setRequired(true).addChoices(
+                        { name: 'members', value: 'members' },
+                        { name: 'humans', value: 'humans' },
+                        { name: 'bots', value: 'bots' },
+                        { name: 'channels', value: 'channels' },
+                        { name: 'text channels', value: 'text_channels' },
+                        { name: 'voice channels', value: 'voice_channels' },
+                        { name: 'roles', value: 'roles' },
+                        { name: 'in voice', value: 'in_voice' }
+                    ))
+                    .addChannelOption(option => option.setName('channel').setDescription('Voice or stage channel to rename').addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice).setRequired(true))
+            )
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('remove')
+                    .setDescription('Remove a configured stats channel metric')
+                    .addStringOption(option => option.setName('metric').setDescription('Metric to remove').setRequired(true).addChoices(
+                        { name: 'members', value: 'members' },
+                        { name: 'humans', value: 'humans' },
+                        { name: 'bots', value: 'bots' },
+                        { name: 'channels', value: 'channels' },
+                        { name: 'text channels', value: 'text_channels' },
+                        { name: 'voice channels', value: 'voice_channels' },
+                        { name: 'roles', value: 'roles' },
+                        { name: 'in voice', value: 'in_voice' }
+                    ))
+            )
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('refresh')
+                    .setDescription('Refresh all configured stats channels now')
+            )
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('list')
+                    .setDescription('List configured stats channel bindings')
+            ),
+        new SlashCommandBuilder()
             .setName('allow-invites')
             .setDescription('Allow a user or bot to post Discord invite links (Staff Only)')
             .addUserOption(option => option.setName('target').setDescription('User or bot to allow').setRequired(true)),
@@ -165,7 +220,7 @@ function buildCommands() {
                     .setDescription('Ban a member')
                     .addUserOption(option => option.setName('member').setDescription('Member to ban').setRequired(true))
                     .addStringOption(option => option.setName('reason').setDescription('Reason').setRequired(true))
-                        .addIntegerOption(option => option.setName('delete_days').setDescription('Delete message history in days').setMinValue(0).setMaxValue(7))
+                    .addIntegerOption(option => option.setName('delete_days').setDescription('Delete message history in days').setMinValue(0).setMaxValue(7))
             )
             .addSubcommand(subcommand =>
                 subcommand

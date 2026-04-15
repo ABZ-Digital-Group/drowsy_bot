@@ -71,6 +71,7 @@ bindAsync('channelUpdate', (oldChannel, newChannel) => communityFeature.handleCh
 bindAsync('roleCreate', role => communityFeature.handleRoleCreate(role));
 bindAsync('roleDelete', role => communityFeature.handleRoleDelete(role));
 bindAsync('roleUpdate', (oldRole, newRole) => communityFeature.handleRoleUpdate(oldRole, newRole));
+bindAsync('voiceStateUpdate', (oldState, newState) => communityFeature.handleVoiceStateUpdate(oldState, newState));
 bindAsync('emojiCreate', emoji => communityFeature.handleEmojiCreate(emoji));
 bindAsync('emojiDelete', emoji => communityFeature.handleEmojiDelete(emoji));
 bindAsync('emojiUpdate', (oldEmoji, newEmoji) => communityFeature.handleEmojiUpdate(oldEmoji, newEmoji));

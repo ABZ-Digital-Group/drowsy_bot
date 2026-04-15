@@ -29,6 +29,7 @@ function createState(config) {
     }
 
     const guildConfigs = readJsonFile(config.FILES.guildConfig, {});
+    const memberStatsStore = readJsonFile(config.FILES.memberStats, {});
     const reactionRoleStore = readJsonFile(config.FILES.reactionRoles, {});
     const modlogStore = readJsonFile(config.FILES.modlog, {});
     const stickyRoleStore = readJsonFile(config.FILES.stickyRoles, {});
@@ -36,6 +37,7 @@ function createState(config) {
 
     const state = {
         guildConfigs,
+        memberStatsStore,
         reactionRoleStore,
         modlogStore,
         stickyRoleStore,
@@ -49,6 +51,9 @@ function createState(config) {
         },
         persistGuildConfigs() {
             writeJsonFile(config.FILES.guildConfig, state.guildConfigs);
+        },
+        persistMemberStatsStore() {
+            writeJsonFile(config.FILES.memberStats, state.memberStatsStore);
         },
         persistReactionRoles() {
             writeJsonFile(config.FILES.reactionRoles, state.reactionRoleStore);
@@ -80,11 +85,48 @@ function createState(config) {
                     reactionRoles: {
                         defaultUnique: false,
                     },
+                    stats: {
+                        channels: {},
+                    },
                     moderation: {
                         mutedRoleId: null,
                         stickyRoleIds: [],
                     },
                 };
+            }
+
+            if (!state.guildConfigs[guildId].logging) {
+                state.guildConfigs[guildId].logging = {
+                    messageChannelId: null,
+                    inviteChannelId: null,
+                    memberChannelId: null,
+                    serverChannelId: null,
+                    modChannelId: null,
+                    dramaChannelId: null,
+                    highlightChannelId: null,
+                };
+            }
+
+            if (!state.guildConfigs[guildId].ignoredChannelIds) state.guildConfigs[guildId].ignoredChannelIds = [];
+            if (!state.guildConfigs[guildId].ignoredMemberIds) state.guildConfigs[guildId].ignoredMemberIds = [];
+            if (!state.guildConfigs[guildId].ignoredPrefixes) state.guildConfigs[guildId].ignoredPrefixes = [];
+            if (!state.guildConfigs[guildId].reactionRoles) state.guildConfigs[guildId].reactionRoles = { defaultUnique: false };
+            if (typeof state.guildConfigs[guildId].reactionRoles.defaultUnique !== 'boolean') {
+                state.guildConfigs[guildId].reactionRoles.defaultUnique = false;
+            }
+            if (!state.guildConfigs[guildId].stats) state.guildConfigs[guildId].stats = { channels: {} };
+            if (!state.guildConfigs[guildId].stats.channels) state.guildConfigs[guildId].stats.channels = {};
+            if (!state.guildConfigs[guildId].moderation) {
+                state.guildConfigs[guildId].moderation = {
+                    mutedRoleId: null,
+                    stickyRoleIds: [],
+                };
+            }
+            if (!Array.isArray(state.guildConfigs[guildId].moderation.stickyRoleIds)) {
+                state.guildConfigs[guildId].moderation.stickyRoleIds = [];
+            }
+            if (!Object.prototype.hasOwnProperty.call(state.guildConfigs[guildId].moderation, 'mutedRoleId')) {
+                state.guildConfigs[guildId].moderation.mutedRoleId = null;
             }
 
             return state.guildConfigs[guildId];
@@ -95,6 +137,51 @@ function createState(config) {
             }
 
             return state.modlogStore[guildId];
+        },
+        getGuildMemberStats(guildId) {
+            if (!state.memberStatsStore[guildId]) {
+                state.memberStatsStore[guildId] = { users: {} };
+            }
+
+            if (!state.memberStatsStore[guildId].users) {
+                state.memberStatsStore[guildId].users = {};
+            }
+
+            return state.memberStatsStore[guildId];
+        },
+        getMemberStats(guildId, userId) {
+            const guildStats = state.getGuildMemberStats(guildId);
+            if (!guildStats.users[userId]) {
+                guildStats.users[userId] = {
+                    messages: {
+                        total: 0,
+                        daily: {},
+                        channels: {},
+                    },
+                    voice: {
+                        totalSeconds: 0,
+                        daily: {},
+                        channels: {},
+                    },
+                };
+            }
+
+            const userStats = guildStats.users[userId];
+            if (!userStats.messages) {
+                userStats.messages = { total: 0, daily: {}, channels: {} };
+            }
+            if (typeof userStats.messages.total !== 'number') userStats.messages.total = 0;
+            if (!userStats.messages.daily) userStats.messages.daily = {};
+            if (!userStats.messages.channels) userStats.messages.channels = {};
+
+            if (!userStats.voice) {
+                userStats.voice = { totalSeconds: 0, daily: {}, channels: {} };
+            }
+            if (typeof userStats.voice.totalSeconds !== 'number') userStats.voice.totalSeconds = 0;
+            if (!userStats.voice.daily) userStats.voice.daily = {};
+            if (!userStats.voice.channels) userStats.voice.channels = {};
+
+            return userStats;
         },
         getStickyRolesForGuild(guildId) {
             if (!state.stickyRoleStore[guildId]) state.stickyRoleStore[guildId] = {};
