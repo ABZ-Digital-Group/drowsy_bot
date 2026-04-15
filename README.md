@@ -18,7 +18,6 @@ It is built with Node.js and discord.js and stores runtime data in JSON files un
 - Invite moderation with allowlist and cleanup tools
 - Auto-updating stat channels
 - Statbot-style member stats cards with image charts
-- `s?u` message alias for member stats lookup
 
 ## Removed Systems
 
@@ -243,9 +242,6 @@ The bot tracks per-member message and voice activity from the moment this versio
 
 - `/server-stats user`
 - `/server-stats user member:@someone`
-- `s?u`
-- `s?u @someone`
-- `s?u 123456789012345678`
 
 ### What the Card Includes
 
@@ -272,7 +268,6 @@ The bot cannot backfill historical analytics from before tracking began. Stats o
 - `/events`
 - `/server-stats user [member]`
 - `-events`
-- `s?u [member_or_id]`
 
 ### Staff Commands
 

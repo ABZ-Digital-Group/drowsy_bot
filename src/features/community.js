@@ -582,23 +582,6 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         if (message.author.bot) return;
         if (message.guild) trackMessageStats(message);
 
-        if (message.guild && /^s\?u(?:\s+.+)?$/i.test(message.content.trim())) {
-            try {
-                const mentionedUser = message.mentions.users.first();
-                const idMatch = message.content.match(/(\d{17,20})/);
-                const targetUser = mentionedUser
-                    ?? (idMatch ? await client.users.fetch(idMatch[1]).catch(() => null) : null)
-                    ?? message.author;
-                const targetMember = await message.guild.members.fetch(targetUser.id).catch(() => null);
-                const payload = await buildMemberStatsPayload(message.guild, targetMember, targetUser);
-                await message.reply(payload);
-            } catch (error) {
-                console.error('Message user stats lookup failed:', error);
-                await message.reply('I could not build that user stats card right now.');
-            }
-            return;
-        }
-
         if (message.guild && message.content.trim().toLowerCase() === '-events') {
             try {
                 await sendActiveEvents(message, message.guild);
