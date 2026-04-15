@@ -1,22 +1,33 @@
 # Drowsy Bot
 
-Drowsy Bot is a Discord bot for running stage-style voice events, publishing scheduled events, controlling invite-link moderation, managing reaction roles, routing moderation and server logs, and handling basic moderation workflows.
+Drowsy Bot is a Discord bot focused on three areas:
 
-It is built with Node.js and discord.js and stores its runtime configuration in JSON files on disk.
+- hosted stage and queue events
+- invite-link moderation and invite allowlisting
+- Statbot-style server and member stats
 
-## Feature Summary
+It is built with Node.js and discord.js and stores runtime data in JSON files under `data/`.
+
+## Current Feature Set
 
 - Multi-stage queue flow for voice events
 - Intermission radio playback from a local MP3 file
-- Hype session controls with audience buttons
-- Optional recording delivery for the active speaker
-- Public event lookup using Discord scheduled events
-- Invite-link moderation with allowlisting and cleanup tools
-- Auto-updating stat channels and on-demand server stats summaries
-- Reaction-role messages with multiple operating modes
-- Logging for messages, invites, members, moderation, and server changes
-- Moderation commands with persistent case history
-- Sticky-role restoration for returning members
+- Hype session buttons for active speakers
+- Optional recording delivery for the current speaker
+- Public scheduled-event lookup
+- Invite moderation with allowlist and cleanup tools
+- Auto-updating stat channels
+- Statbot-style member stats cards with image charts
+- `s?u` message alias for member stats lookup
+
+## Removed Systems
+
+These systems are no longer part of the bot:
+
+- reaction roles
+- logging system
+- moderation commands
+- sticky-role handling
 
 ## Requirements
 
@@ -26,11 +37,6 @@ It is built with Node.js and discord.js and stores its runtime configuration in 
 
 ## Installation
 
-1. Clone the repository.
-2. Install dependencies.
-3. Create a `.env` file.
-4. Start the bot.
-
 ```bash
 git clone https://github.com/ABZ-Digital-Group/drowsy_bot.git
 cd drowsy_bot
@@ -38,18 +44,9 @@ npm install
 node index.js
 ```
 
-For a production process manager, `pm2` is a reasonable choice:
-
-```bash
-npm install
-pm2 start index.js --name drowsy_bot
-```
-
 ## Environment Variables
 
-The bot reads configuration from `.env` via `dotenv`.
-
-Required values:
+Create a `.env` file:
 
 ```env
 DISCORD_TOKEN=your_bot_token
@@ -60,14 +57,14 @@ ALLOW_INVITE_PASSWORD=optional_dm_password
 
 ### Variable Reference
 
-- `DISCORD_TOKEN`: the bot token from the Discord developer portal
-- `CLIENT_ID`: the Discord application ID used when registering slash commands
-- `GUILD_ID`: the target guild where slash commands are registered
-- `ALLOW_INVITE_PASSWORD`: optional DM password a user can send with `!allowinvite <password>` to self-authorize invite posting
+- `DISCORD_TOKEN`: bot token from the Discord developer portal
+- `CLIENT_ID`: Discord application ID used to register guild commands
+- `GUILD_ID`: guild where slash commands are registered
+- `ALLOW_INVITE_PASSWORD`: optional password used by the DM command `!allowinvite <password>`
 
-## Discord Permissions and Intents
+## Discord Intents
 
-The bot is configured with these gateway intents:
+The bot uses these intents:
 
 - Guilds
 - GuildMessages
@@ -76,33 +73,16 @@ The bot is configured with these gateway intents:
 - GuildMembers
 - DirectMessages
 - GuildScheduledEvents
-- GuildMessageReactions
-- GuildModeration
-
-The bot should also have practical server permissions for the features you enable, including:
-
-- View Channels
-- Send Messages
-- Embed Links
-- Read Message History
-- Manage Messages
-- Manage Roles
-- Moderate Members
-- Kick Members
-- Ban Members
-- Connect and Speak in voice channels
-
-For queue hosting, role assignment, moderation, and cleanup actions, the bot must sit high enough in the role hierarchy.
 
 ## Staff Access Model
 
 Staff-only commands are available to:
 
-- The guild owner
-- Members with `Administrator`
-- Members with `Manage Guild`
-- Members with `Moderate Members`
-- Members who hold one of these role names:
+- the guild owner
+- members with `Administrator`
+- members with `Manage Guild`
+- members with `Moderate Members`
+- members who hold one of these role names:
   - `Guards`
   - `Knights`
   - `Drowsy Defenders`
@@ -125,352 +105,111 @@ assets/
 data/
 ```
 
-### Important Runtime Paths
+## Data Files
 
-- `assets/intermission.mp3`: background intermission audio for the stage radio flow
-- `recordings/`: generated speaker recordings are written here temporarily
-- `data/`: JSON persistence for guild settings and bot state
+The bot creates and uses these files under `data/`:
 
-## Persistent Data Files
+- `guild-config.json`: guild-level settings, including stats-channel bindings
+- `allowed-invite-users.json`: invite allowlist
+- `member-stats.json`: tracked message and voice analytics
 
-The bot creates and maintains these files under `data/`:
-
-- `guild-config.json`: log routing, ignore lists, and moderation helper config per guild
-- `allowed-invite-users.json`: invite-link allowlist
-- `member-stats.json`: persistent per-member message and voice analytics
-- `reaction-roles.json`: stored reaction-role message definitions
-- `modlog-cases.json`: moderation case history and next case number
-- `sticky-roles.json`: roles to restore when members rejoin
-- `temporary-reaction-roles.json`: pending temporary role expirations
-
-## Core Systems
+Some older data files may still exist from previous versions, but they are no longer used by the current runtime.
 
 ## Stage Queue System
 
-The stage queue is designed for hosted performance or open-mic style events.
+The stage queue is built for hosted performances or open-mic style events.
+
+### Commands
+
+- `/start-queue`
+- `/stop-queue`
+- `/next`
+- `/radio`
 
 ### How It Works
 
-1. A staff member runs `/start-queue` while connected to the target voice channel.
-2. The bot posts a queue panel in the current text channel.
-3. Users join the queue with the `Join Queue` button.
-4. Staff move to the next performer with `/next`, or the current performer finishes with the `Done` button.
-5. When no one is on stage, the bot can loop the intermission track.
+1. A staff member joins the voice channel they want to host.
+2. They run `/start-queue` in a text channel.
+3. The bot posts a queue panel with buttons.
+4. Members join or leave the lineup using buttons.
+5. Staff move the event forward with `/next` or the active speaker ends their turn with `Done`.
 
-### Stage Buttons
+### Queue Buttons
 
-- `Join Queue`: join the lineup if you are in the target voice channel
-- `Leave`: leave the lineup
-- `Done`: end your turn if you are the current speaker
+- `Join Queue`
+- `Leave`
+- `Done`
 
-### Hype Session Buttons
+### Hype Buttons
 
-- `Clap`: increases the hype meter
-- `Fire`: increases the hype meter
-- `Record Me`: starts a recording for the active speaker only
+- `Clap`
+- `Fire`
+- `Record Me`
 
-### Stage Notes
+### Notes
 
-- The queue panel is refreshed by deleting and re-posting the status message.
-- The current speaker receives a dedicated hype message.
-- Recordings are DM'd back to the active speaker if the output file is non-trivial.
-- The intermission track is expected at `assets/intermission.mp3`.
+- `assets/intermission.mp3` is used for radio playback.
+- recordings are written into `recordings/`
+- the active speaker can request a recording and receive it by DM
 
 ## Events System
 
-The bot can publish active or upcoming Discord scheduled events.
+The bot can post active and upcoming Discord scheduled events.
 
-Available entry points:
+### Public Entry Points
 
 - `/events`
 - `-events`
 
-Behavior:
+### Behavior
 
-- Fetches scheduled events from the guild
-- Filters to `Scheduled` and `Active`
-- Sorts by start time
-- Posts native Discord event URLs so clients render event cards naturally
+- fetches scheduled events from the guild
+- filters to active and scheduled entries
+- sorts by start time
+- posts Discord event URLs so the client renders them naturally
+
+## Invite Moderation
+
+Invite links are allowed only for the guild owner and users on the bot's invite allowlist.
+
+### Staff Commands
+
+- `/allow-invites target:<user>`
+- `/revoke-invites target:<user>`
+- `/purge-invites [messages_per_channel]`
+
+### User Self-Allow Flow
+
+Users can DM the bot:
+
+```text
+!allowinvite your_password_here
+```
+
+If the password matches `ALLOW_INVITE_PASSWORD`, they are added to the allowlist.
+
+### Invite Cleanup
+
+`/purge-invites` scans accessible text and announcement channels and deletes unauthorized invite links.
 
 ## Server Stats System
 
-The bot includes a Statbot-style server stats feature for staff.
+The bot includes two stats surfaces:
 
-### What It Can Do
-
-- Show an on-demand summary of the server's current counts
-- Show a Statbot-style member activity profile
-- Rename configured voice or stage channels to display live metrics
-- Refresh stat channels automatically when the server changes
-
-### Supported Metrics
-
-- Total members
-- Human members
-- Bots
-- Total non-category channels
-- Text channels
-- Voice channels
-- Roles
-- Members currently in voice
-
-### Member Analytics
-
-The member stats profile is designed to feel closer to Statbot's user summary card.
-
-It includes:
-
-- account creation and server join dates
-- message and voice rank within the server
-- message totals for 1 day, 7 days, 14 days, and all-time tracked history
-- voice totals for 1 day, 7 days, 14 days, and all-time tracked history
-- top message channels
-- top voice channels
-- a rendered 14-day activity chart image
-- current Discord presence activities when available
-
-Message alias:
-
-- `s?u`
-- `s?u @member`
-- `s?u 123456789012345678`
-
-Important note:
-
-- member analytics only include data collected after this feature is deployed
-- existing historical Discord activity is not backfilled from before the bot tracked it
-
-### Auto Refresh Triggers
-
-Configured stats channels are refreshed when:
-
-- The bot starts
-- A member joins or leaves
-- A voice state changes
-- A channel is created or deleted
-- A role is created or deleted
+- server-wide counters
+- member activity cards
 
 ### Server Stats Commands
 
 - `/server-stats show`
-- `/server-stats user`
 - `/server-stats channel`
 - `/server-stats remove`
 - `/server-stats refresh`
 - `/server-stats list`
 
-## Invite Moderation
+These commands are staff-only except for member profile lookup.
 
-Invite links are detected using a regex that covers both Discord invite links and Discord event links.
-
-### Invite Rules
-
-- Invite links are logged if invite logging is configured.
-- Unauthorized invite links are deleted automatically.
-- A short warning message is posted in-channel and removed after a few seconds.
-- Exempt users are determined by the guild owner or the invite allowlist.
-
-### Invite Access Methods
-
-- `/allow-invites target:<user>`
-- `/revoke-invites target:<user>`
-- DM command: `!allowinvite <password>`
-
-### Invite Cleanup
-
-- `/purge-invites`
-- Optional `messages_per_channel` scan limit
-- Skips channels where the bot lacks view, history, or message-management permissions
-
-## Reaction Roles
-
-Reaction roles are stored in persistent config and applied from message reactions.
-
-### Supported Modes
-
-- `unique`: only one mapped role set from that message at a time
-- `verify`: keep the role even if the reaction is removed
-- `reversed`: flip add/remove behavior
-- `binding`: remove the reaction if the linked role disappears from the member
-- `temporary_minutes`: auto-remove granted roles after the configured duration
-- `self_destruct_minutes`: delete the reaction-role message after the configured duration
-
-### Access Controls
-
-Each reaction-role message can define:
-
-- A whitelist of required roles
-- A blacklist of blocked roles
-
-If a member does not satisfy the access rules, their reaction is removed and no role is granted.
-
-### Reaction-Role Workflow
-
-1. Use `/reaction-role post` to create the base embed.
-2. Use `/reaction-role map` to attach emoji-to-role mappings.
-3. Use `/reaction-role access` to define whitelist or blacklist rules.
-4. Use `/reaction-role list` to inspect stored config.
-5. Use `/reaction-role unmap` to remove mappings.
-
-### Reaction-Role Notes
-
-- A single emoji can map to multiple roles.
-- Role assignments only work if the bot can manage those roles.
-- Temporary role removal tasks are restored after bot restart.
-- Self-destruct timers are restored after bot restart.
-
-## Logging System
-
-The bot supports separate channels for different log categories.
-
-### Log Categories
-
-- Message logs
-- Invite logs
-- Member logs
-- Server logs
-- Moderation logs
-- Drama channel output
-- Highlight channel output
-
-### Ignore Rules
-
-Logging can ignore:
-
-- Specific channels
-- Specific members
-- Specific message prefixes
-
-### Logged Events
-
-Message-related:
-
-- Message delete
-- Bulk delete
-- Message edit
-
-Member-related:
-
-- Join
-- Leave
-- Member update
-- Ban
-- Unban
-
-Server-related:
-
-- Channel create
-- Channel delete
-- Channel rename
-- Role create
-- Role delete
-- Role rename
-- Emoji create
-- Emoji delete
-- Emoji rename
-
-Invite-related:
-
-- Seen invite links
-- Unauthorized invite deletions
-
-## Moderation System
-
-Moderation actions create persistent case records and can optionally emit to both a mod log channel and a drama channel.
-
-### Safety Checks
-
-Before acting, the bot blocks:
-
-- Self-targeting
-- Targeting the guild owner
-- Targeting members with equal or higher role position than the moderator
-- Actions the bot cannot perform due to hierarchy or missing permissions
-
-### Stored Moderation Data
-
-Each case stores:
-
-- Case number
-- Action
-- Target
-- Moderator
-- Reason
-- Timestamp
-
-### Sticky Roles
-
-When configured, sticky roles are remembered when a member leaves and restored when they return.
-
-The muted role is treated as part of the sticky-role preservation set if configured.
-
-## Command Reference
-
-## Public Commands
-
-### `/events`
-
-Posts links for active or upcoming scheduled server events.
-
-### `-events`
-
-Message-based shortcut for the same event lookup.
-
-## Invite Commands
-
-### `/allow-invites`
-
-Allows a user or bot to post Discord invite links.
-
-Arguments:
-
-- `target` required
-
-### `/revoke-invites`
-
-Removes invite-posting permission from a user or bot.
-
-Arguments:
-
-- `target` required
-
-### `/purge-invites`
-
-Scans text channels and deletes unauthorized invite links.
-
-Arguments:
-
-- `messages_per_channel` optional
-
-## Server Stats Commands
-
-### `/server-stats user`
-
-Shows activity stats for a member. If no member is provided, it shows your own tracked profile.
-
-Arguments:
-
-- `member` optional
-
-Message alias:
-
-- `s?u`
-- `s?u @member`
-
-### `/server-stats show`
-
-Shows the current server stats summary in an embed.
-
-### `/server-stats channel`
-
-Assigns one metric to a voice or stage channel that the bot will keep renamed.
-
-Arguments:
-
-- `metric` required
-- `channel` required
-
-Metrics:
+### Supported Channel Metrics
 
 - `members`
 - `humans`
@@ -481,290 +220,90 @@ Metrics:
 - `roles`
 - `in_voice`
 
-### `/server-stats remove`
+### Stat Channels
 
-Removes a stat-channel binding.
+The bot can rename voice or stage channels to display live counters like:
 
-Arguments:
+- `Members: 420`
+- `In Voice: 17`
 
-- `metric` required
+Configured stat channels refresh on:
 
-### `/server-stats refresh`
+- bot startup
+- member join and leave
+- voice-state changes
+- channel creation and deletion
+- role creation and deletion
 
-Forces an immediate refresh of all configured stat channels.
+## Member Stats Cards
 
-### `/server-stats list`
+The bot tracks per-member message and voice activity from the moment this version is deployed.
 
-Shows the current stat-channel bindings.
+### Public Lookup Methods
 
-## Stage Commands
+- `/server-stats user`
+- `/server-stats user member:@someone`
+- `s?u`
+- `s?u @someone`
+- `s?u 123456789012345678`
 
-### `/start-queue`
+### What the Card Includes
 
-Starts the stage queue using the staff member's current voice channel.
+- account creation date
+- server join date
+- top role
+- message rank
+- voice rank
+- message totals for `1d`, `7d`, `14d`, and total tracked history
+- voice totals for `1d`, `7d`, `14d`, and total tracked history
+- top message channels
+- top voice channels
+- a rendered 14-day chart image
+- current Discord presence activity when available
 
-### `/stop-queue`
+### Important Limitation
 
-Stops the queue and destroys the voice connection.
+The bot cannot backfill historical analytics from before tracking began. Stats only reflect activity recorded while this version of the bot is running.
 
-### `/next`
+## Command Reference
 
-Moves to the next speaker.
+### Public Commands
 
-### `/radio`
+- `/events`
+- `/server-stats user [member]`
+- `-events`
+- `s?u [member_or_id]`
 
-Toggles intermission playback.
+### Staff Commands
 
-## Reaction-Role Commands
-
-### `/reaction-role post`
-
-Creates a reaction-role message.
-
-Arguments:
-
-- `channel` required
-- `title` required
-- `description` required
-- `unique` optional
-- `verify` optional
-- `reversed` optional
-- `binding` optional
-- `temporary_minutes` optional
-- `self_destruct_minutes` optional
-
-### `/reaction-role map`
-
-Maps an emoji to a role on an existing reaction-role message.
-
-Arguments:
-
-- `channel` required
-- `message_id` required
-- `emoji` required
-- `role` required
-
-### `/reaction-role unmap`
-
-Removes a role from an emoji mapping.
-
-Arguments:
-
-- `channel` required
-- `message_id` required
-- `emoji` required
-- `role` required
-
-### `/reaction-role access`
-
-Updates whitelist or blacklist rules.
-
-Arguments:
-
-- `channel` required
-- `message_id` required
-- `list` required
-- `action` required
-- `role` required
-
-### `/reaction-role list`
-
-Shows the stored config for a reaction-role message.
-
-Arguments:
-
-- `channel` required
-- `message_id` required
-
-## Logging Commands
-
-### `/logging channel`
-
-Assigns a channel for a logging category.
-
-Arguments:
-
-- `category` required
-- `channel` required
-
-Categories:
-
-- `message`
-- `invite`
-- `member`
-- `server`
-- `mod`
-- `drama`
-- `highlight`
-
-### `/logging ignore-channel`
-
-Adds or removes a channel from logging ignore rules.
-
-Arguments:
-
-- `action` required
-- `channel` required
-
-### `/logging ignore-member`
-
-Adds or removes a member from logging ignore rules.
-
-Arguments:
-
-- `action` required
-- `member` required
-
-### `/logging ignore-prefix`
-
-Adds or removes a message prefix from logging ignore rules.
-
-Arguments:
-
-- `action` required
-- `prefix` required
-
-### `/logging status`
-
-Shows the current logging configuration.
-
-## Moderation Commands
-
-### `/moderation warn`
-
-Creates a warning case.
-
-Arguments:
-
-- `member` required
-- `reason` required
-
-### `/moderation timeout`
-
-Times out a member.
-
-Arguments:
-
-- `member` required
-- `minutes` required
-- `reason` required
-
-### `/moderation untimeout`
-
-Removes an active timeout.
-
-Arguments:
-
-- `member` required
-- `reason` optional
-
-### `/moderation kick`
-
-Kicks a member.
-
-Arguments:
-
-- `member` required
-- `reason` required
-
-### `/moderation ban`
-
-Bans a member.
-
-Arguments:
-
-- `member` required
-- `reason` required
-- `delete_days` optional
-
-### `/moderation unban`
-
-Unbans a user by raw user ID.
-
-Arguments:
-
-- `user_id` required
-- `reason` optional
-
-### `/moderation purge`
-
-Bulk deletes recent messages, optionally filtered to one member.
-
-Arguments:
-
-- `amount` required
-- `member` optional
-- `reason` optional
-
-### `/moderation history`
-
-Shows the recent stored case history for a member.
-
-Arguments:
-
-- `member` required
-
-### `/moderation bulk-role`
-
-Adds or removes one role for every member who currently has another role.
-
-Arguments:
-
-- `action` required
-- `target_role` required
-- `source_role` required
-- `reason` optional
-
-## Moderation Config Commands
-
-### `/moderation-config muted-role`
-
-Sets the muted role ID used by sticky-role handling.
-
-Arguments:
-
-- `role` required
-
-### `/moderation-config sticky-role`
-
-Adds or removes a sticky role.
-
-Arguments:
-
-- `action` required
-- `role` required
-
-### `/moderation-config show`
-
-Shows the current moderation helper configuration.
+- `/start-queue`
+- `/stop-queue`
+- `/next`
+- `/radio`
+- `/allow-invites`
+- `/revoke-invites`
+- `/purge-invites`
+- `/server-stats show`
+- `/server-stats channel`
+- `/server-stats remove`
+- `/server-stats refresh`
+- `/server-stats list`
 
 ## First-Time Setup Checklist
 
 1. Create the Discord application and bot.
-2. Enable the intents used by the bot in the Discord developer portal.
-3. Invite the bot to the server with the required permissions.
-4. Add the `.env` file with valid IDs and token.
+2. Enable the required intents in the Discord developer portal.
+3. Invite the bot to the target server.
+4. Create `.env` with valid IDs and token.
 5. Run `npm install`.
-6. Add `assets/intermission.mp3` if you want queue radio playback.
-7. Start the bot so slash commands register for the configured guild.
-8. Configure log channels with `/logging channel`.
-9. Configure moderation helpers with `/moderation-config` if needed.
-10. Configure `/server-stats channel` if you want Statbot-style counter channels.
-11. Create reaction-role posts if you want self-serve role assignment.
+6. Add `assets/intermission.mp3` if you want radio playback.
+7. Start the bot so it registers slash commands for the configured guild.
+8. Configure stat channels with `/server-stats channel` if needed.
+9. Test `/events`, `/server-stats user`, and the stage queue commands.
 
 ## Deployment Notes
 
-### Updating the Bot
-
 Typical update flow:
-
-```bash
-git pull origin main
-npm install
-pm2 restart drowsy_bot
-```
-
-If you are not using `pm2`:
 
 ```bash
 git pull origin main
@@ -772,25 +311,12 @@ npm install
 node index.js
 ```
 
-### Missing Dependency Error
-
-If you see an error like `Cannot find module 'dotenv'`, dependencies are not installed on that machine.
-
-Fix:
+If you use `pm2`:
 
 ```bash
-npm install
-```
-
-### Pull Conflicts Around `node_modules`
-
-If `git pull` fails because files under `node_modules` would be overwritten, clean the working tree and reinstall dependencies:
-
-```bash
-rm -rf node_modules
-git checkout -- package.json package-lock.json node_modules/.package-lock.json
 git pull origin main
 npm install
+pm2 restart drowsy_bot
 ```
 
 ## Troubleshooting
@@ -801,59 +327,55 @@ Check:
 
 - `CLIENT_ID` is correct
 - `GUILD_ID` is correct
-- The bot can log in successfully
-- The configured guild is the server you are testing in
+- the bot can log in successfully
+- the bot has been restarted after deployment
 
-### Slash Command Registration Fails
+### Missing Dependency Error
 
-If Discord reports `Invalid Form Body`, the command schema is invalid. Review recent changes to [src/commands.js](src/commands.js), especially required and optional option order.
+If you see `Cannot find module 'dotenv'` or another dependency error, run:
 
-### Reaction Roles Do Not Apply
+```bash
+npm install
+```
+
+### Invite Moderation Does Not Delete Links
 
 Check:
 
-- The bot role is above the target roles
-- The message ID and channel ID are correct
-- The emoji mapping exists
-- The member passes whitelist and blacklist checks
+- the bot can manage messages in that channel
+- the message actually matches the Discord invite regex
+- the sender is not the guild owner
+- the sender is not on the allowlist
+
+### Stats Channels Do Not Rename
+
+Check:
+
+- the configured channel is a voice or stage channel
+- the bot can rename the channel
+- the bot role is high enough in the hierarchy
+
+### Member Stats Card Looks Empty
+
+This usually means the member has little or no tracked data yet. The bot only records analytics from the point this feature is active.
 
 ### Queue Radio Does Not Play
 
 Check:
 
 - `assets/intermission.mp3` exists
-- The bot can connect and speak in the voice channel
-- The runtime has installed voice dependencies
-
-### Moderation Actions Fail
-
-Check:
-
-- The moderator is not targeting themselves
-- The target is not the guild owner
-- The moderator outranks the target
-- The bot outranks the target
-- The bot has the relevant moderation permission
+- the bot can connect and speak in the voice channel
+- dependencies installed successfully on the host
 
 ## Architecture Notes
 
-The runtime is modularized into:
-
-- [index.js](index.js): bootstrap and event binding
-- [src/config.js](src/config.js): constants, paths, and environment access
-- [src/state.js](src/state.js): JSON-backed persistence and in-memory runtime state
+- [index.js](index.js): bot bootstrap and event binding
+- [src/config.js](src/config.js): constants, env vars, and file paths
+- [src/state.js](src/state.js): file-backed persistence and shared runtime state
 - [src/helpers.js](src/helpers.js): shared helper utilities
-- [src/commands.js](src/commands.js): slash-command schema generation
+- [src/commands.js](src/commands.js): slash command schema
 - [src/features/stage.js](src/features/stage.js): queue, hype, radio, and recording flow
-- [src/features/community.js](src/features/community.js): events, invite moderation, reaction roles, logging, moderation, and event handlers
-
-## Limitations and Notes
-
-- Slash commands are registered to a single guild, not globally.
-- Recordings are delivered by DM and rely on voice receiving and FFmpeg behavior from the installed dependency stack.
-- Reaction-role state and moderation history are file-backed, not database-backed.
-- Logging only occurs for categories that have configured channels.
-- Invite moderation exempts the guild owner and allowlisted users.
+- [src/features/community.js](src/features/community.js): events, invite moderation, stats, and member analytics
 
 ## License
 

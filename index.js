@@ -24,10 +24,8 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.GuildScheduledEvents,
-        GatewayIntentBits.GuildMessageReactions,
-        GatewayIntentBits.GuildModeration,
     ],
-    partials: [Partials.Channel, Partials.Message, Partials.Reaction, Partials.User],
+    partials: [Partials.Channel, Partials.Message, Partials.User],
 });
 
 const state = createState(config);
@@ -57,26 +55,13 @@ client.once('clientReady', async () => {
 });
 
 bindAsync('messageCreate', message => communityFeature.handleMessageCreate(message));
-bindAsync('messageDelete', message => communityFeature.handleMessageDelete(message));
-bindAsync('messageDeleteBulk', messages => communityFeature.handleMessageDeleteBulk(messages));
-bindAsync('messageUpdate', (oldMessage, newMessage) => communityFeature.handleMessageUpdate(oldMessage, newMessage));
 bindAsync('guildMemberAdd', member => communityFeature.handleGuildMemberAdd(member));
 bindAsync('guildMemberRemove', member => communityFeature.handleGuildMemberRemove(member));
-bindAsync('guildMemberUpdate', (oldMember, newMember) => communityFeature.handleGuildMemberUpdate(oldMember, newMember));
-bindAsync('guildBanAdd', ban => communityFeature.handleGuildBanAdd(ban));
-bindAsync('guildBanRemove', ban => communityFeature.handleGuildBanRemove(ban));
 bindAsync('channelCreate', channel => communityFeature.handleChannelCreate(channel));
 bindAsync('channelDelete', channel => communityFeature.handleChannelDelete(channel));
-bindAsync('channelUpdate', (oldChannel, newChannel) => communityFeature.handleChannelUpdate(oldChannel, newChannel));
 bindAsync('roleCreate', role => communityFeature.handleRoleCreate(role));
 bindAsync('roleDelete', role => communityFeature.handleRoleDelete(role));
-bindAsync('roleUpdate', (oldRole, newRole) => communityFeature.handleRoleUpdate(oldRole, newRole));
 bindAsync('voiceStateUpdate', (oldState, newState) => communityFeature.handleVoiceStateUpdate(oldState, newState));
-bindAsync('emojiCreate', emoji => communityFeature.handleEmojiCreate(emoji));
-bindAsync('emojiDelete', emoji => communityFeature.handleEmojiDelete(emoji));
-bindAsync('emojiUpdate', (oldEmoji, newEmoji) => communityFeature.handleEmojiUpdate(oldEmoji, newEmoji));
-bindAsync('messageReactionAdd', (reaction, user) => communityFeature.handleReactionAdd(reaction, user));
-bindAsync('messageReactionRemove', (reaction, user) => communityFeature.handleReactionRemove(reaction, user));
 bindAsync('interactionCreate', interaction => communityFeature.handleInteraction(interaction));
 
 client.login(config.BOT_TOKEN);

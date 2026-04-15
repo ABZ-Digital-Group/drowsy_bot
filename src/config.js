@@ -25,9 +25,5 @@ module.exports = {
         guildConfig: path.join(DATA_DIR, 'guild-config.json'),
         allowedInvites: path.join(DATA_DIR, 'allowed-invite-users.json'),
         memberStats: path.join(DATA_DIR, 'member-stats.json'),
-        reactionRoles: path.join(DATA_DIR, 'reaction-roles.json'),
-        modlog: path.join(DATA_DIR, 'modlog-cases.json'),
-        stickyRoles: path.join(DATA_DIR, 'sticky-roles.json'),
-        temporaryRoles: path.join(DATA_DIR, 'temporary-reaction-roles.json'),
     },
 };

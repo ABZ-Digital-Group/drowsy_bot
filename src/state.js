@@ -30,22 +30,12 @@ function createState(config) {
 
     const guildConfigs = readJsonFile(config.FILES.guildConfig, {});
     const memberStatsStore = readJsonFile(config.FILES.memberStats, {});
-    const reactionRoleStore = readJsonFile(config.FILES.reactionRoles, {});
-    const modlogStore = readJsonFile(config.FILES.modlog, {});
-    const stickyRoleStore = readJsonFile(config.FILES.stickyRoles, {});
-    const temporaryReactionRoleStore = readJsonFile(config.FILES.temporaryRoles, {});
 
     const state = {
         guildConfigs,
         memberStatsStore,
-        reactionRoleStore,
-        modlogStore,
-        stickyRoleStore,
-        temporaryReactionRoleStore,
         allowedInviteUsers: loadAllowedInviteUsers(),
         channelData: new Map(),
-        selfDestructTimers: new Map(),
-        temporaryRoleTimers: new Map(),
         saveAllowedInviteUsers() {
             writeJsonFile(config.FILES.allowedInvites, { users: [...state.allowedInviteUsers] });
         },
@@ -55,88 +45,19 @@ function createState(config) {
         persistMemberStatsStore() {
             writeJsonFile(config.FILES.memberStats, state.memberStatsStore);
         },
-        persistReactionRoles() {
-            writeJsonFile(config.FILES.reactionRoles, state.reactionRoleStore);
-        },
-        persistModlogStore() {
-            writeJsonFile(config.FILES.modlog, state.modlogStore);
-        },
-        persistStickyRoleStore() {
-            writeJsonFile(config.FILES.stickyRoles, state.stickyRoleStore);
-        },
-        persistTemporaryReactionRoleStore() {
-            writeJsonFile(config.FILES.temporaryRoles, state.temporaryReactionRoleStore);
-        },
         getGuildConfig(guildId) {
             if (!state.guildConfigs[guildId]) {
                 state.guildConfigs[guildId] = {
-                    logging: {
-                        messageChannelId: null,
-                        inviteChannelId: null,
-                        memberChannelId: null,
-                        serverChannelId: null,
-                        modChannelId: null,
-                        dramaChannelId: null,
-                        highlightChannelId: null,
-                    },
-                    ignoredChannelIds: [],
-                    ignoredMemberIds: [],
-                    ignoredPrefixes: [],
-                    reactionRoles: {
-                        defaultUnique: false,
-                    },
                     stats: {
                         channels: {},
                     },
-                    moderation: {
-                        mutedRoleId: null,
-                        stickyRoleIds: [],
-                    },
                 };
             }
 
-            if (!state.guildConfigs[guildId].logging) {
-                state.guildConfigs[guildId].logging = {
-                    messageChannelId: null,
-                    inviteChannelId: null,
-                    memberChannelId: null,
-                    serverChannelId: null,
-                    modChannelId: null,
-                    dramaChannelId: null,
-                    highlightChannelId: null,
-                };
-            }
-
-            if (!state.guildConfigs[guildId].ignoredChannelIds) state.guildConfigs[guildId].ignoredChannelIds = [];
-            if (!state.guildConfigs[guildId].ignoredMemberIds) state.guildConfigs[guildId].ignoredMemberIds = [];
-            if (!state.guildConfigs[guildId].ignoredPrefixes) state.guildConfigs[guildId].ignoredPrefixes = [];
-            if (!state.guildConfigs[guildId].reactionRoles) state.guildConfigs[guildId].reactionRoles = { defaultUnique: false };
-            if (typeof state.guildConfigs[guildId].reactionRoles.defaultUnique !== 'boolean') {
-                state.guildConfigs[guildId].reactionRoles.defaultUnique = false;
-            }
             if (!state.guildConfigs[guildId].stats) state.guildConfigs[guildId].stats = { channels: {} };
             if (!state.guildConfigs[guildId].stats.channels) state.guildConfigs[guildId].stats.channels = {};
-            if (!state.guildConfigs[guildId].moderation) {
-                state.guildConfigs[guildId].moderation = {
-                    mutedRoleId: null,
-                    stickyRoleIds: [],
-                };
-            }
-            if (!Array.isArray(state.guildConfigs[guildId].moderation.stickyRoleIds)) {
-                state.guildConfigs[guildId].moderation.stickyRoleIds = [];
-            }
-            if (!Object.prototype.hasOwnProperty.call(state.guildConfigs[guildId].moderation, 'mutedRoleId')) {
-                state.guildConfigs[guildId].moderation.mutedRoleId = null;
-            }
 
             return state.guildConfigs[guildId];
-        },
-        getModlog(guildId) {
-            if (!state.modlogStore[guildId]) {
-                state.modlogStore[guildId] = { nextCaseNumber: 1, cases: [] };
-            }
-
-            return state.modlogStore[guildId];
         },
         getGuildMemberStats(guildId) {
             if (!state.memberStatsStore[guildId]) {
@@ -182,22 +103,6 @@ function createState(config) {
             if (!userStats.voice.channels) userStats.voice.channels = {};
 
             return userStats;
-        },
-        getStickyRolesForGuild(guildId) {
-            if (!state.stickyRoleStore[guildId]) state.stickyRoleStore[guildId] = {};
-            return state.stickyRoleStore[guildId];
-        },
-        getTemporaryRoleAssignments(guildId) {
-            if (!state.temporaryReactionRoleStore[guildId]) state.temporaryReactionRoleStore[guildId] = [];
-            return state.temporaryReactionRoleStore[guildId];
-        },
-        getReactionRoleGuildState(guildId) {
-            if (!state.reactionRoleStore[guildId]) state.reactionRoleStore[guildId] = { messages: {} };
-            if (!state.reactionRoleStore[guildId].messages) state.reactionRoleStore[guildId].messages = {};
-            return state.reactionRoleStore[guildId];
-        },
-        getReactionRoleMessageConfig(guildId, messageId) {
-            return state.getReactionRoleGuildState(guildId).messages[messageId] ?? null;
         },
         getChannelData(channelId) {
             if (!state.channelData.has(channelId)) {
