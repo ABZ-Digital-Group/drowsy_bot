@@ -75,6 +75,15 @@ function buildCommands() {
             .setName('purge-invites')
             .setDescription('Delete unauthorized invite links across text channels (Staff Only)')
             .addIntegerOption(option => option.setName('messages_per_channel').setDescription('Messages to scan per channel').setMinValue(1).setMaxValue(config.MAX_PURGE_SCAN_LIMIT)),
+        new SlashCommandBuilder()
+            .setName('add-money')
+            .setDescription('Build an UnbelievaBoat add-money command for staff use')
+            .addStringOption(option => option.setName('target').setDescription('Where the money should go').addChoices(
+                { name: 'cash', value: 'cash' },
+                { name: 'bank', value: 'bank' }
+            ))
+            .addUserOption(option => option.setName('member').setDescription('Member to give money to').setRequired(true))
+            .addIntegerOption(option => option.setName('amount').setDescription('Amount to add').setRequired(true).setMinValue(1)),
     ].map(command => command.toJSON());
 }
 

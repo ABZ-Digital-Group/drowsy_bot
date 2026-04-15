@@ -694,6 +694,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             'allow-invites',
             'revoke-invites',
             'purge-invites',
+            'add-money',
         ]);
 
         const isStaffStatsSubcommand = interaction.commandName === 'server-stats'
@@ -758,6 +759,22 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const result = await purgeInviteLinksInGuild(interaction.guild, scanLimit);
             await interaction.editReply(`Invite cleanup finished. Scanned ${result.scannedChannels} channels, skipped ${result.skippedChannels}, checked ${result.scannedMessages} messages, and deleted ${result.deletedMessages} invite links.`);
+            return;
+        }
+
+        if (interaction.commandName === 'add-money') {
+            const balanceTarget = interaction.options.getString('target');
+            const targetUser = interaction.options.getUser('member', true);
+            const amount = interaction.options.getInteger('amount', true);
+            const commandParts = ['!add-money'];
+            if (balanceTarget) commandParts.push(balanceTarget);
+            commandParts.push(`<@${targetUser.id}>`, String(amount));
+
+            await interaction.reply(helpers.privateReply([
+                'Run this UnbelievaBoat command manually in a channel it can read:',
+                `\`${commandParts.join(' ')}\``,
+                'This bot formats the command for you, but it cannot force the other bot to execute it.',
+            ].join('\n')));
             return;
         }
 

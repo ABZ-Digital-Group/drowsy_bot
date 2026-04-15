@@ -176,6 +176,7 @@ Invite links are allowed only for the guild owner and users on the bot's invite 
 - `/allow-invites target:<user>`
 - `/revoke-invites target:<user>`
 - `/purge-invites [messages_per_channel]`
+- `/add-money [target] <member> <amount>`
 
 ### User Self-Allow Flow
 
@@ -190,6 +191,24 @@ If the password matches `ALLOW_INVITE_PASSWORD`, they are added to the allowlist
 ### Invite Cleanup
 
 `/purge-invites` scans accessible text and announcement channels and deletes unauthorized invite links.
+
+## UnbelievaBoat Helper
+
+The bot includes a staff-only helper for formatting UnbelievaBoat's economy grant command.
+
+### Staff Command
+
+- `/add-money [cash|bank] <member> <amount>`
+
+### What It Does
+
+- builds the exact UnbelievaBoat command string
+- defaults to the normal cash form when `cash` or `bank` is omitted
+- replies ephemerally so staff can copy the generated command
+
+### Important Limitation
+
+This bot does not execute UnbelievaBoat commands directly. It formats the command for staff to paste manually, because bots generally do not process prefix commands sent by other bots.
 
 ## Server Stats System
 
@@ -275,6 +294,7 @@ The bot cannot backfill historical analytics from before tracking began. Stats o
 - `/stop-queue`
 - `/next`
 - `/radio`
+- `/add-money [target] <member> <amount>`
 - `/allow-invites`
 - `/revoke-invites`
 - `/purge-invites`
