@@ -55,13 +55,6 @@ client.once('clientReady', async () => {
 });
 
 bindAsync('messageCreate', message => communityFeature.handleMessageCreate(message));
-bindAsync('guildMemberAdd', member => communityFeature.handleGuildMemberAdd(member));
-bindAsync('guildMemberRemove', member => communityFeature.handleGuildMemberRemove(member));
-bindAsync('channelCreate', channel => communityFeature.handleChannelCreate(channel));
-bindAsync('channelDelete', channel => communityFeature.handleChannelDelete(channel));
-bindAsync('roleCreate', role => communityFeature.handleRoleCreate(role));
-bindAsync('roleDelete', role => communityFeature.handleRoleDelete(role));
-bindAsync('voiceStateUpdate', (oldState, newState) => communityFeature.handleVoiceStateUpdate(oldState, newState));
 bindAsync('interactionCreate', interaction => communityFeature.handleInteraction(interaction));
 
 client.login(config.BOT_TOKEN);

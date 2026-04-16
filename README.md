@@ -4,7 +4,6 @@ Drowsy Bot is a Discord bot focused on three areas:
 
 - hosted stage and queue events
 - invite-link moderation and invite allowlisting
-- Statbot-style server and member stats
 
 It is built with Node.js and discord.js and stores runtime data in JSON files under `data/`.
 
@@ -12,12 +11,8 @@ It is built with Node.js and discord.js and stores runtime data in JSON files un
 
 - Multi-stage queue flow for voice events
 - Intermission radio playback from a local MP3 file
-- Hype session buttons for active speakers
-- Optional recording delivery for the current speaker
 - Public scheduled-event lookup
 - Invite moderation with allowlist and cleanup tools
-- Auto-updating stat channels
-- Statbot-style member stats cards with image charts
 
 ## Removed Systems
 
@@ -52,7 +47,6 @@ DISCORD_TOKEN=your_bot_token
 CLIENT_ID=your_application_id
 GUILD_ID=your_server_id
 ALLOW_INVITE_PASSWORD=optional_dm_password
-UNBELIEVABOAT_PREFIX=!!
 ```
 
 ### Variable Reference
@@ -61,7 +55,6 @@ UNBELIEVABOAT_PREFIX=!!
 - `CLIENT_ID`: Discord application ID used to register guild commands
 - `GUILD_ID`: guild where slash commands are registered
 - `ALLOW_INVITE_PASSWORD`: optional password used by the DM command `!allowinvite <password>`
-- `UNBELIEVABOAT_PREFIX`: prefix used when relaying economy commands to UnbelievaBoat, for example `!` or `!!`
 
 ## Discord Intents
 
@@ -101,7 +94,6 @@ src/
   features/
     community.js
     stage.js
-recordings/
 assets/
 data/
 ```
@@ -110,9 +102,8 @@ data/
 
 The bot creates and uses these files under `data/`:
 
-- `guild-config.json`: guild-level settings, including stats-channel bindings
+- `guild-config.json`: guild-level bot settings
 - `allowed-invite-users.json`: invite allowlist
-- `member-stats.json`: tracked message and voice analytics
 
 Some older data files may still exist from previous versions, but they are no longer used by the current runtime.
 
@@ -132,8 +123,9 @@ The stage queue is built for hosted performances or open-mic style events.
 1. A staff member joins the voice channel they want to host.
 2. They run `/start-queue` in a text channel.
 3. The bot posts a queue panel with buttons.
-4. Members join or leave the lineup using buttons.
-5. Staff move the event forward with `/next` or the active speaker ends their turn with `Done`.
+4. Staff can run `/start-queue` in additional text channels for the same active voice channel to create mirrored control panels.
+5. Members join or leave the lineup using buttons from any active control panel.
+6. Staff move the event forward with `/next` or the active speaker ends their turn with `Done`.
 
 ### Queue Buttons
 
@@ -141,17 +133,11 @@ The stage queue is built for hosted performances or open-mic style events.
 - `Leave`
 - `Done`
 
-### Hype Buttons
-
-- `Clap`
-- `Fire`
-- `Record Me`
-
 ### Notes
 
 - `assets/intermission.mp3` is used for radio playback.
-- recordings are written into `recordings/`
-- the active speaker can request a recording and receive it by DM
+- only one voice channel can be active per server at a time
+- multiple text-channel control panels can manage that same active voice channel
 
 ## Events System
 
@@ -178,7 +164,6 @@ Invite links are allowed only for the guild owner and users on the bot's invite 
 - `/allow-invites target:<user>`
 - `/revoke-invites target:<user>`
 - `/purge-invites [messages_per_channel]`
-- `/add-money [target] <member> <amount>`
 
 ### User Self-Allow Flow
 
@@ -194,102 +179,11 @@ If the password matches `ALLOW_INVITE_PASSWORD`, they are added to the allowlist
 
 `/purge-invites` scans accessible text and announcement channels and deletes unauthorized invite links.
 
-## UnbelievaBoat Helper
-
-The bot includes a staff-only helper for formatting UnbelievaBoat's economy grant command.
-
-### Staff Command
-
-- `/add-money [cash|bank] <member> <amount>`
-
-### What It Does
-
-- builds the exact UnbelievaBoat command string
-- defaults to the normal cash form when `cash` or `bank` is omitted
-- replies ephemerally so staff can copy the generated command
-
-### Important Limitation
-
-This bot does not execute UnbelievaBoat commands directly. It formats the command for staff to paste manually, because bots generally do not process prefix commands sent by other bots.
-
-If your server uses a custom UnbelievaBoat prefix such as `!!`, set `UNBELIEVABOAT_PREFIX` in `.env` so the relayed command matches your server configuration.
-
-## Server Stats System
-
-The bot includes two stats surfaces:
-
-- server-wide counters
-- member activity cards
-
-### Server Stats Commands
-
-- `/server-stats show`
-- `/server-stats channel`
-- `/server-stats remove`
-- `/server-stats refresh`
-- `/server-stats list`
-
-These commands are staff-only except for member profile lookup.
-
-### Supported Channel Metrics
-
-- `members`
-- `humans`
-- `bots`
-- `channels`
-- `text_channels`
-- `voice_channels`
-- `roles`
-- `in_voice`
-
-### Stat Channels
-
-The bot can rename voice or stage channels to display live counters like:
-
-- `Members: 420`
-- `In Voice: 17`
-
-Configured stat channels refresh on:
-
-- bot startup
-- member join and leave
-- voice-state changes
-- channel creation and deletion
-- role creation and deletion
-
-## Member Stats Cards
-
-The bot tracks per-member message and voice activity from the moment this version is deployed.
-
-### Public Lookup Methods
-
-- `/server-stats user`
-- `/server-stats user member:@someone`
-
-### What the Card Includes
-
-- account creation date
-- server join date
-- top role
-- message rank
-- voice rank
-- message totals for `1d`, `7d`, `14d`, and total tracked history
-- voice totals for `1d`, `7d`, `14d`, and total tracked history
-- top message channels
-- top voice channels
-- a rendered 14-day chart image
-- current Discord presence activity when available
-
-### Important Limitation
-
-The bot cannot backfill historical analytics from before tracking began. Stats only reflect activity recorded while this version of the bot is running.
-
 ## Command Reference
 
 ### Public Commands
 
 - `/events`
-- `/server-stats user [member]`
 - `-events`
 
 ### Staff Commands
@@ -298,15 +192,9 @@ The bot cannot backfill historical analytics from before tracking began. Stats o
 - `/stop-queue`
 - `/next`
 - `/radio`
-- `/add-money [target] <member> <amount>`
 - `/allow-invites`
 - `/revoke-invites`
 - `/purge-invites`
-- `/server-stats show`
-- `/server-stats channel`
-- `/server-stats remove`
-- `/server-stats refresh`
-- `/server-stats list`
 
 ## First-Time Setup Checklist
 
@@ -317,8 +205,7 @@ The bot cannot backfill historical analytics from before tracking began. Stats o
 5. Run `npm install`.
 6. Add `assets/intermission.mp3` if you want radio playback.
 7. Start the bot so it registers slash commands for the configured guild.
-8. Configure stat channels with `/server-stats channel` if needed.
-9. Test `/events`, `/server-stats user`, and the stage queue commands.
+8. Test `/events` and the stage queue commands.
 
 ## Deployment Notes
 
@@ -366,18 +253,6 @@ Check:
 - the sender is not the guild owner
 - the sender is not on the allowlist
 
-### Stats Channels Do Not Rename
-
-Check:
-
-- the configured channel is a voice or stage channel
-- the bot can rename the channel
-- the bot role is high enough in the hierarchy
-
-### Member Stats Card Looks Empty
-
-This usually means the member has little or no tracked data yet. The bot only records analytics from the point this feature is active.
-
 ### Queue Radio Does Not Play
 
 Check:
@@ -393,8 +268,8 @@ Check:
 - [src/state.js](src/state.js): file-backed persistence and shared runtime state
 - [src/helpers.js](src/helpers.js): shared helper utilities
 - [src/commands.js](src/commands.js): slash command schema
-- [src/features/stage.js](src/features/stage.js): queue, hype, radio, and recording flow
-- [src/features/community.js](src/features/community.js): events, invite moderation, stats, and member analytics
+- [src/features/stage.js](src/features/stage.js): queue, speaker handoff, and radio flow
+- [src/features/community.js](src/features/community.js): events and invite moderation
 
 ## License
 
