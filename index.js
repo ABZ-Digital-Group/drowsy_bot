@@ -66,9 +66,9 @@ function readObsNowSingingOverlay() {
 
 function buildObsOverlayHtml(overlay) {
     const safeText = escapeHtml(overlay.text);
-    const imageMarkup = overlay.avatarUrl
-        ? `<img id="now-singing-avatar" class="avatar" src="${escapeHtml(overlay.avatarUrl)}" alt="${safeText}">`
-        : `<div id="now-singing-avatar" class="avatar avatar--placeholder" aria-label="${safeText}" role="img"></div>`;
+    const avatarClasses = overlay.avatarUrl ? 'avatar' : 'avatar avatar--placeholder';
+    const avatarSrc = overlay.avatarUrl ? ` src="${escapeHtml(overlay.avatarUrl)}"` : '';
+    const imageMarkup = `<img id="now-singing-avatar" class="${avatarClasses}"${avatarSrc} alt="${safeText}">`;
 
     return `<!DOCTYPE html>
 <html lang="en">
