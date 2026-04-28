@@ -4,6 +4,7 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 const DATA_DIR = path.join(ROOT_DIR, 'data');
 const ASSETS_DIR = path.join(ROOT_DIR, 'assets');
 const OBS_NOW_SINGING_FILE = path.join(ASSETS_DIR, 'obs-now-singing.txt');
+const OBS_NOW_SINGING_JSON_FILE = path.join(ASSETS_DIR, 'obs-now-singing.json');
 const parsedObsHttpPort = Number.parseInt(process.env.OBS_HTTP_PORT ?? '', 10);
 
 module.exports = {
@@ -21,9 +22,11 @@ module.exports = {
     DATA_DIR,
     ASSETS_DIR,
     OBS_NOW_SINGING_FILE,
+    OBS_NOW_SINGING_JSON_FILE,
     FILES: {
         guildConfig: path.join(DATA_DIR, 'guild-config.json'),
         allowedInvites: path.join(DATA_DIR, 'allowed-invite-users.json'),
         obsNowSinging: OBS_NOW_SINGING_FILE,
+        obsNowSingingJson: OBS_NOW_SINGING_JSON_FILE,
     },
 };

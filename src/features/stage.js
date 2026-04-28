@@ -15,8 +15,12 @@ const {
 } = require('@discordjs/voice');
 
 function createStageFeature({ config, state, helpers }) {
-    function writeObsNowSinging(text) {
+    function writeObsNowSinging(text, avatarUrl = null) {
         fs.writeFileSync(config.FILES.obsNowSinging, `${text}\n`, 'utf8');
+        fs.writeFileSync(config.FILES.obsNowSingingJson, JSON.stringify({
+            text,
+            avatarUrl,
+        }, null, 2));
     }
 
     async function startRadio(guild, session) {
@@ -99,8 +103,9 @@ function createStageFeature({ config, state, helpers }) {
         const speakerId = session.currentSpeaker;
         const speakerMember = await guild.members.fetch(speakerId).catch(() => null);
         const speakerName = speakerMember?.displayName ?? speakerMember?.user?.username ?? 'Unknown Singer';
+        const speakerAvatarUrl = speakerMember?.displayAvatarURL({ extension: 'png', size: 512 }) ?? null;
 
-        writeObsNowSinging(speakerName);
+        writeObsNowSinging(speakerName, speakerAvatarUrl);
 
         const nowSingingEmbed = new EmbedBuilder()
             .setTitle('Now Singing')

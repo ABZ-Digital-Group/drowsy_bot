@@ -49,8 +49,27 @@ function readObsNowSingingText() {
     return fs.readFileSync(config.FILES.obsNowSinging, 'utf8').trim() || 'Show Offline';
 }
 
-function buildObsOverlayHtml(text) {
-    const safeText = escapeHtml(text);
+function readObsNowSingingOverlay() {
+    try {
+        const parsed = JSON.parse(fs.readFileSync(config.FILES.obsNowSingingJson, 'utf8'));
+        return {
+            text: typeof parsed.text === 'string' && parsed.text.trim() ? parsed.text.trim() : 'Show Offline',
+            avatarUrl: typeof parsed.avatarUrl === 'string' && parsed.avatarUrl.trim() ? parsed.avatarUrl.trim() : null,
+        };
+    } catch (error) {
+        return {
+            text: readObsNowSingingText(),
+            avatarUrl: null,
+        };
+    }
+}
+
+function buildObsOverlayHtml(overlay) {
+    const safeText = escapeHtml(overlay.text);
+    const imageMarkup = overlay.avatarUrl
+        ? `<img id="now-singing-avatar" class="avatar" src="${escapeHtml(overlay.avatarUrl)}" alt="${safeText}">`
+        : `<div id="now-singing-avatar" class="avatar avatar--placeholder" aria-label="${safeText}" role="img"></div>`;
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -81,39 +100,64 @@ function buildObsOverlayHtml(text) {
             padding: 16px;
         }
 
-        .card {
+        .frame {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-width: 320px;
-            max-width: 100%;
-            padding: 18px 28px;
-            border: 2px solid rgba(255, 230, 167, 0.65);
-            border-radius: 999px;
-            background: linear-gradient(135deg, rgba(17, 24, 39, 0.82), rgba(64, 34, 16, 0.78));
+            width: 360px;
+            height: 360px;
+            padding: 16px;
+            border: 3px solid rgba(255, 230, 167, 0.7);
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(255, 248, 220, 0.2), rgba(64, 34, 16, 0.78));
             box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
-            color: #fff8dc;
-            font-size: 40px;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            text-align: center;
-            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
-            white-space: pre-wrap;
-            word-break: break-word;
+            overflow: hidden;
+        }
+
+        .avatar {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+            background: rgba(17, 24, 39, 0.72);
+        }
+
+        .avatar--placeholder {
+            background:
+                radial-gradient(circle at 50% 35%, rgba(255, 248, 220, 0.92) 0 16%, transparent 17%),
+                radial-gradient(circle at 50% 78%, rgba(255, 248, 220, 0.92) 0 28%, transparent 29%),
+                linear-gradient(135deg, rgba(17, 24, 39, 0.9), rgba(64, 34, 16, 0.82));
         }
     </style>
 </head>
 <body>
-    <div class="card" id="now-singing">${safeText}</div>
+    <div class="frame" title="${safeText}">
+        ${imageMarkup}
+    </div>
     <script>
-        const singerElement = document.getElementById('now-singing');
+        const singerAvatarElement = document.getElementById('now-singing-avatar');
 
         async function refreshSinger() {
-            const response = await fetch('/obs/now-singing.txt', { cache: 'no-store' });
+            const response = await fetch('/obs/now-singing.json', { cache: 'no-store' });
             if (!response.ok) return;
 
-            const nextText = (await response.text()).trim() || 'Show Offline';
-            singerElement.textContent = nextText;
+            const nextOverlay = await response.json();
+            const nextText = typeof nextOverlay.text === 'string' && nextOverlay.text.trim() ? nextOverlay.text.trim() : 'Show Offline';
+            const nextAvatarUrl = typeof nextOverlay.avatarUrl === 'string' && nextOverlay.avatarUrl.trim() ? nextOverlay.avatarUrl.trim() : null;
+
+            singerAvatarElement.setAttribute('aria-label', nextText);
+            singerAvatarElement.parentElement.setAttribute('title', nextText);
+
+            if (nextAvatarUrl) {
+                singerAvatarElement.classList.remove('avatar--placeholder');
+                singerAvatarElement.setAttribute('src', nextAvatarUrl);
+                singerAvatarElement.setAttribute('alt', nextText);
+            } else {
+                singerAvatarElement.removeAttribute('src');
+                singerAvatarElement.setAttribute('alt', nextText);
+                singerAvatarElement.classList.add('avatar--placeholder');
+            }
         }
 
         refreshSinger().catch(() => {});
@@ -131,6 +175,7 @@ function startObsHttpServer() {
     const server = http.createServer((request, response) => {
         const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`);
         const currentSinger = readObsNowSingingText();
+        const currentOverlay = readObsNowSingingOverlay();
 
         if (url.pathname === '/health') {
             response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -148,13 +193,23 @@ function startObsHttpServer() {
             return;
         }
 
+        if (url.pathname === '/obs/now-singing.json') {
+            response.writeHead(200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Cache-Control': 'no-store',
+                'Access-Control-Allow-Origin': '*',
+            });
+            response.end(JSON.stringify(currentOverlay));
+            return;
+        }
+
         if (url.pathname === '/obs/now-singing') {
             response.writeHead(200, {
                 'Content-Type': 'text/html; charset=utf-8',
                 'Cache-Control': 'no-store',
                 'Access-Control-Allow-Origin': '*',
             });
-            response.end(buildObsOverlayHtml(currentSinger));
+            response.end(buildObsOverlayHtml(currentOverlay));
             return;
         }
 

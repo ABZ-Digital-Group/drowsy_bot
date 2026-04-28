@@ -170,10 +170,18 @@ If the bot is hosted on a VPS, OBS cannot read the bot's local filesystem direct
 http://YOUR_VPS_HOST:OBS_HTTP_PORT/obs/now-singing
 ```
 
+That browser source now renders the active singer's server profile picture using their guild avatar when available, and falls back to their normal Discord avatar otherwise.
+
 There is also a raw text endpoint available at:
 
 ```text
 http://YOUR_VPS_HOST:OBS_HTTP_PORT/obs/now-singing.txt
+```
+
+And a JSON endpoint with both the current display name and avatar URL:
+
+```text
+http://YOUR_VPS_HOST:OBS_HTTP_PORT/obs/now-singing.json
 ```
 
 The browser source updates whenever OBS refreshes the page. If you want near-live updates, set the Browser Source to refresh when it becomes active or use a short custom refresh workflow through OBS/browser-source controls.

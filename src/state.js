@@ -9,6 +9,13 @@ function createState(config) {
         fs.writeFileSync(config.FILES.obsNowSinging, 'Show Offline\n', 'utf8');
     }
 
+    if (!fs.existsSync(config.FILES.obsNowSingingJson)) {
+        fs.writeFileSync(config.FILES.obsNowSingingJson, JSON.stringify({
+            text: 'Show Offline',
+            avatarUrl: null,
+        }, null, 2));
+    }
+
     function readJsonFile(filePath, fallbackValue) {
         if (!fs.existsSync(filePath)) return fallbackValue;
 
