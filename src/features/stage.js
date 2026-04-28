@@ -15,6 +15,10 @@ const {
 } = require('@discordjs/voice');
 
 function createStageFeature({ config, state, helpers }) {
+    function writeObsNowSinging(text) {
+        fs.writeFileSync(config.FILES.obsNowSinging, `${text}\n`, 'utf8');
+    }
+
     async function startRadio(guild, session) {
         if (!session.targetVC) return;
 
@@ -93,6 +97,11 @@ function createStageFeature({ config, state, helpers }) {
     async function announceCurrentSpeaker(guild, session) {
         stopRadio(session);
         const speakerId = session.currentSpeaker;
+        const speakerMember = await guild.members.fetch(speakerId).catch(() => null);
+        const speakerName = speakerMember?.displayName ?? speakerMember?.user?.username ?? 'Unknown Singer';
+
+        writeObsNowSinging(speakerName);
+
         const nowSingingEmbed = new EmbedBuilder()
             .setTitle('Now Singing')
             .setDescription(`<@${speakerId}>\nStage: <#${session.targetVC}>`)
@@ -117,6 +126,7 @@ function createStageFeature({ config, state, helpers }) {
         }
 
         session.currentSpeaker = null;
+        writeObsNowSinging('Open Mic');
         await startRadio(guild, session);
     }
 
@@ -136,6 +146,7 @@ function createStageFeature({ config, state, helpers }) {
         const session = state.getGuildStageSession(channel.guild.id);
         session.targetVC = voiceChannelId;
         session.panelChannelIds.add(channel.id);
+        writeObsNowSinging('Open Mic');
         await refreshAllPanels(channel.guild, session);
         await startRadio(channel.guild, session);
         return { status: 'created', targetVC: session.targetVC };
@@ -177,6 +188,7 @@ function createStageFeature({ config, state, helpers }) {
             if (panelMessage) await panelMessage.delete().catch(() => {});
         }
 
+        writeObsNowSinging('Show Ended');
         state.clearGuildStageSession(channel.guild.id);
         return { status: 'stopped' };
     }

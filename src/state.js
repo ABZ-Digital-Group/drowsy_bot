@@ -5,6 +5,10 @@ function createState(config) {
     fs.mkdirSync(config.ASSETS_DIR, { recursive: true });
     fs.mkdirSync(config.DATA_DIR, { recursive: true });
 
+    if (!fs.existsSync(config.FILES.obsNowSinging)) {
+        fs.writeFileSync(config.FILES.obsNowSinging, 'Show Offline\n', 'utf8');
+    }
+
     function readJsonFile(filePath, fallbackValue) {
         if (!fs.existsSync(filePath)) return fallbackValue;
 

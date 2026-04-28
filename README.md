@@ -47,6 +47,8 @@ DISCORD_TOKEN=your_bot_token
 CLIENT_ID=your_application_id
 GUILD_ID=your_server_id
 ALLOW_INVITE_PASSWORD=optional_dm_password
+OBS_HTTP_PORT=8080
+OBS_HTTP_HOST=0.0.0.0
 ```
 
 ### Variable Reference
@@ -55,6 +57,8 @@ ALLOW_INVITE_PASSWORD=optional_dm_password
 - `CLIENT_ID`: Discord application ID used to register guild commands
 - `GUILD_ID`: guild where slash commands are registered
 - `ALLOW_INVITE_PASSWORD`: optional password used by the DM command `!allowinvite <password>`
+- `OBS_HTTP_PORT`: optional port for the built-in OBS overlay endpoint
+- `OBS_HTTP_HOST`: optional bind host for the OBS overlay endpoint
 
 ## Discord Intents
 
@@ -136,8 +140,43 @@ The stage queue is built for hosted performances or open-mic style events.
 ### Notes
 
 - `assets/intermission.mp3` is used for radio playback.
+- `assets/obs-now-singing.txt` is updated with the current singer name for OBS text sources.
 - only one voice channel can be active per server at a time
 - multiple text-channel control panels can manage that same active voice channel
+
+### OBS Text Source
+
+If the bot and OBS run on the same machine, you can add a text source that reads from:
+
+```text
+assets/obs-now-singing.txt
+```
+
+The bot keeps that file updated with:
+
+- the current singer's display name
+- `Open Mic` when nobody is up
+- `Show Ended` when the queue is stopped
+
+### OBS Browser Source For VPS Hosting
+
+If the bot is hosted on a VPS, OBS cannot read the bot's local filesystem directly. In that case:
+
+1. Set `OBS_HTTP_PORT` in `.env`.
+2. Open or proxy that port on the VPS.
+3. In OBS, add a Browser Source pointing to:
+
+```text
+http://YOUR_VPS_HOST:OBS_HTTP_PORT/obs/now-singing
+```
+
+There is also a raw text endpoint available at:
+
+```text
+http://YOUR_VPS_HOST:OBS_HTTP_PORT/obs/now-singing.txt
+```
+
+The browser source updates whenever OBS refreshes the page. If you want near-live updates, set the Browser Source to refresh when it becomes active or use a short custom refresh workflow through OBS/browser-source controls.
 
 ## Events System
 
