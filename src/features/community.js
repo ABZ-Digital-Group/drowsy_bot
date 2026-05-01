@@ -164,8 +164,8 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             if (message && !signatureChanged) continue;
 
             if (message) {
-                await message.edit(payload).catch(() => {});
-                continue;
+                await message.delete().catch(() => {});
+                session.adMessageIds.delete(channelId);
             }
 
             const createdMessage = await channel.send(payload).catch(() => null);
