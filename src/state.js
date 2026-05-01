@@ -145,9 +145,11 @@ function createState(config) {
                     queue: [],
                     currentSpeaker: null,
                     panelMessageIds: new Map(),
+                    adMessageIds: new Map(),
                     panelChannelIds: new Set(),
                     radioPlayer: null,
                     voiceConnection: null,
+                    lastAdvertisementSignature: null,
                     targetVC: null,
                 });
             }

@@ -145,6 +145,7 @@ The stage queue is built for hosted performances or open-mic style events.
 - only one voice channel can be active per server at a time
 - multiple text-channel control panels can manage that same active voice channel
 - uploaded sponsor images are stored under `assets/ads/` for the OBS ad overlay
+- when a stage is active, the bot also posts the current sponsor ad into the active control-panel text channels and updates it as ads change or rotate
 
 ### OBS Text Source
 

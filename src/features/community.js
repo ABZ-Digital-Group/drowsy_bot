@@ -1,7 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const {
+    AttachmentBuilder,
     ChannelType,
+    EmbedBuilder,
     GuildScheduledEventStatus,
     MessageFlags,
 } = require('discord.js');
@@ -14,6 +16,8 @@ const IMAGE_CONTENT_TYPE_EXTENSIONS = {
 };
 
 function createCommunityFeature({ client, config, state, helpers, stageFeature }) {
+    let advertisementSyncTimer = null;
+
     function sanitizeAdvertisementLabel(value) {
         return (value ?? '')
             .toLowerCase()
@@ -72,6 +76,113 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         return `${rotationLine}\n${advertisements
             .map((item, index) => `${index + 1}. ${item.title}${item.id === activeId ? ' (active)' : ''}`)
             .join('\n')}`;
+    }
+
+    function getCurrentAdvertisementSnapshot() {
+        const items = state.getAdvertisements();
+        const activeId = typeof state.advertisements.activeId === 'string' ? state.advertisements.activeId : null;
+        const activeIndex = Math.max(0, items.findIndex(item => item?.id === activeId));
+        const rotationIntervalMs = Number.isInteger(state.advertisements.rotationIntervalMs) && state.advertisements.rotationIntervalMs > 0
+            ? state.advertisements.rotationIntervalMs
+            : null;
+        const rotationStartedAt = Date.parse(state.advertisements.rotationStartedAt ?? '');
+        const hasRotation = rotationIntervalMs && items.length > 1 && Number.isFinite(rotationStartedAt);
+        const rotationOffset = hasRotation
+            ? Math.floor(Math.max(0, Date.now() - rotationStartedAt) / rotationIntervalMs) % items.length
+            : 0;
+        const item = items[(activeIndex + rotationOffset) % Math.max(items.length, 1)] ?? null;
+
+        return {
+            item,
+            rotationIntervalMs,
+            signature: item
+                ? `${item.id}:${rotationIntervalMs ?? 'off'}:${hasRotation ? rotationOffset : 0}`
+                : 'none',
+        };
+    }
+
+    function buildAdvertisementMessagePayload(snapshot, session) {
+        if (!snapshot.item) return null;
+
+        const filePath = path.join(config.ADS_DIR, snapshot.item.fileName);
+        if (!fs.existsSync(filePath)) return null;
+
+        const advertisementAttachment = new AttachmentBuilder(filePath, { name: snapshot.item.fileName });
+        const rotationText = snapshot.rotationIntervalMs
+            ? `Auto-rotation every ${Math.floor(snapshot.rotationIntervalMs / 1000)}s`
+            : 'Fixed ad';
+
+        const embed = new EmbedBuilder()
+            .setTitle('Sponsor Spotlight')
+            .setDescription(`Showing in <#${session.targetVC}>\n${rotationText}`)
+            .setColor(0xD07A2D)
+            .setFooter({ text: snapshot.item.title })
+            .setImage(`attachment://${snapshot.item.fileName}`)
+            .setTimestamp(new Date());
+
+        return {
+            content: 'Current sponsor ad:',
+            embeds: [embed],
+            files: [advertisementAttachment],
+        };
+    }
+
+    async function syncStageAdvertisementsForGuild(guild) {
+        const session = state.peekGuildStageSession(guild.id);
+        if (!session) return;
+
+        const snapshot = getCurrentAdvertisementSnapshot();
+        const payload = buildAdvertisementMessagePayload(snapshot, session);
+
+        if (!payload) {
+            for (const [channelId, messageId] of session.adMessageIds.entries()) {
+                const channel = guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId).catch(() => null);
+                if (!channel?.isTextBased()) continue;
+                const message = await channel.messages.fetch(messageId).catch(() => null);
+                if (message) await message.delete().catch(() => {});
+            }
+
+            session.adMessageIds.clear();
+            session.lastAdvertisementSignature = null;
+            return;
+        }
+
+        const signatureChanged = session.lastAdvertisementSignature !== snapshot.signature;
+
+        for (const channelId of [...session.panelChannelIds]) {
+            const channel = guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId).catch(() => null);
+            if (!channel?.isTextBased()) {
+                session.panelChannelIds.delete(channelId);
+                session.panelMessageIds.delete(channelId);
+                session.adMessageIds.delete(channelId);
+                continue;
+            }
+
+            const messageId = session.adMessageIds.get(channelId);
+            const message = messageId ? await channel.messages.fetch(messageId).catch(() => null) : null;
+
+            if (message && !signatureChanged) continue;
+
+            if (message) {
+                await message.edit(payload).catch(() => {});
+                continue;
+            }
+
+            const createdMessage = await channel.send(payload).catch(() => null);
+            if (createdMessage) {
+                session.adMessageIds.set(channelId, createdMessage.id);
+            }
+        }
+
+        session.lastAdvertisementSignature = snapshot.signature;
+    }
+
+    async function syncAllStageAdvertisements() {
+        for (const guildId of state.guildStageSessions.keys()) {
+            const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+            if (!guild) continue;
+            await syncStageAdvertisementsForGuild(guild);
+        }
     }
 
     async function fetchActiveEventLinks(guild) {
@@ -150,7 +261,17 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         return { scannedChannels, skippedChannels, scannedMessages, deletedMessages };
     }
 
-    async function restoreScheduledTasks() {}
+    async function restoreScheduledTasks() {
+        if (!advertisementSyncTimer) {
+            advertisementSyncTimer = setInterval(() => {
+                syncAllStageAdvertisements().catch(error => {
+                    console.error('Advertisement sync failed:', error);
+                });
+            }, 5000);
+        }
+
+        await syncAllStageAdvertisements();
+    }
 
     async function handleMessageCreate(message) {
         if (message.author.bot) return;
@@ -256,6 +377,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                     ? `Added a control panel for the active stage in <#${result.targetVC}>.`
                     : `Refreshed this control panel for the active stage in <#${result.targetVC}>.`;
 
+            await syncStageAdvertisementsForGuild(interaction.guild);
             await interaction.reply(helpers.privateReply(response));
             return;
         }
@@ -273,6 +395,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
             try {
                 const advertisement = await storeAdvertisementAttachment(attachment, title);
+                await syncStageAdvertisementsForGuild(interaction.guild);
                 await interaction.editReply(`Uploaded ad ${advertisement.title}. It is now the active OBS ad.`);
             } catch (error) {
                 console.error('Ad upload failed:', error);
@@ -295,6 +418,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 return;
             }
 
+            await syncStageAdvertisementsForGuild(interaction.guild);
             await interaction.reply(helpers.privateReply(`Active ad set to ${advertisement.title}.`));
             return;
         }
@@ -308,12 +432,14 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
             const seconds = interaction.options.getInteger('seconds', true);
             state.setAdvertisementRotationIntervalMs(seconds * 1000);
+            await syncStageAdvertisementsForGuild(interaction.guild);
             await interaction.reply(helpers.privateReply(`Auto-rotation enabled. Ads will advance every ${seconds} seconds.`));
             return;
         }
 
         if (interaction.commandName === 'ad-rotate-stop') {
             state.setAdvertisementRotationIntervalMs(null);
+            await syncStageAdvertisementsForGuild(interaction.guild);
             await interaction.reply(helpers.privateReply('Auto-rotation disabled.'));
             return;
         }
@@ -328,6 +454,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             }
 
             await fs.promises.unlink(path.join(config.ADS_DIR, removed.fileName)).catch(() => {});
+            await syncStageAdvertisementsForGuild(interaction.guild);
             await interaction.reply(helpers.privateReply(`Deleted ad ${removed.title}.`));
             return;
         }
@@ -339,6 +466,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 return;
             }
 
+            await syncStageAdvertisementsForGuild(interaction.guild);
             await interaction.reply(helpers.privateReply('Moved to the next performer.'));
             return;
         }
@@ -348,6 +476,10 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             if (result.status === 'missing') {
                 await interaction.reply(helpers.privateReply('There is no active stage in this server.'));
                 return;
+            }
+
+            if (result.status === 'started') {
+                await syncStageAdvertisementsForGuild(interaction.guild);
             }
 
             await interaction.reply(helpers.privateReply(result.status === 'started' ? 'Radio started.' : 'Radio stopped.'));

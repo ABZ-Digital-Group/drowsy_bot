@@ -91,6 +91,7 @@ function createStageFeature({ config, state, helpers }) {
             if (!channel?.isTextBased()) {
                 session.panelChannelIds.delete(channelId);
                 session.panelMessageIds.delete(channelId);
+                session.adMessageIds.delete(channelId);
                 continue;
             }
 
@@ -191,6 +192,13 @@ function createStageFeature({ config, state, helpers }) {
             if (!panelChannel?.isTextBased()) continue;
             const panelMessage = await panelChannel.messages.fetch(messageId).catch(() => null);
             if (panelMessage) await panelMessage.delete().catch(() => {});
+        }
+
+        for (const [panelChannelId, messageId] of session.adMessageIds.entries()) {
+            const panelChannel = channel.guild.channels.cache.get(panelChannelId) ?? await channel.guild.channels.fetch(panelChannelId).catch(() => null);
+            if (!panelChannel?.isTextBased()) continue;
+            const advertisementMessage = await panelChannel.messages.fetch(messageId).catch(() => null);
+            if (advertisementMessage) await advertisementMessage.delete().catch(() => {});
         }
 
         writeObsNowSinging('Show Ended');
