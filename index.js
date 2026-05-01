@@ -117,6 +117,17 @@ function readObsAdvertisementByFileName(fileName) {
     }
 }
 
+function readObsLiveEventOverlay() {
+    const singer = readObsNowSingingOverlay();
+    const advertisement = readObsAdvertisement();
+
+    return {
+        stageActive: advertisement.active,
+        singer,
+        advertisement,
+    };
+}
+
 function buildObsOverlayHtml(overlay) {
     const safeText = escapeHtml(overlay.text);
     const avatarClasses = overlay.avatarUrl ? 'avatar' : 'avatar avatar--placeholder';
@@ -505,6 +516,454 @@ function buildAdvertisementOverlayHtml(advertisementState) {
 </html>`;
 }
 
+function buildLiveEventOverlayHtml(liveState) {
+    const singerText = escapeHtml(liveState.singer.text);
+    const singerAvatarUrl = liveState.singer.avatarUrl ? escapeHtml(liveState.singer.avatarUrl) : '';
+    const singerAvatarMarkup = liveState.singer.avatarUrl
+        ? `<img id="live-singer-avatar" class="performer-avatar" src="${singerAvatarUrl}" alt="${singerText}">`
+        : '<div id="live-singer-avatar" class="performer-avatar performer-avatar--placeholder" aria-hidden="true"></div>';
+    const adTitle = escapeHtml(liveState.advertisement.item?.title ?? 'Advertisement');
+    const adMarkup = liveState.advertisement.item
+        ? `<div class="live-ad-slide live-ad-slide--visible" data-kind="image"><img class="live-ad-image" src="${escapeHtml(liveState.advertisement.item.url)}" alt="${adTitle}"></div>`
+        : '<div class="live-ad-slide live-ad-slide--visible" data-kind="empty"><div class="live-ad-empty">No active ad uploaded</div></div>';
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Drowsy Live Event Screen</title>
+    <style>
+        :root {
+            color-scheme: only light;
+            --cream: #f5eee1;
+            --ink: #2c1a10;
+            --panel: rgba(84, 48, 29, 0.78);
+            --gold: #ddb06d;
+            --shadow: rgba(35, 17, 8, 0.32);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            background:
+                radial-gradient(circle at top left, rgba(255, 223, 169, 0.18), transparent 26%),
+                radial-gradient(circle at right, rgba(221, 176, 109, 0.15), transparent 24%),
+                linear-gradient(135deg, #1d120d, #3b2417 42%, #6f4b34 100%);
+            color: var(--cream);
+            overflow: hidden;
+            font-family: Georgia, "Times New Roman", serif;
+        }
+
+        body {
+            padding: 32px;
+        }
+
+        .screen {
+            display: grid;
+            grid-template-columns: minmax(300px, 32vw) minmax(520px, 1fr);
+            gap: 24px;
+            min-height: calc(100vh - 64px);
+        }
+
+        .panel {
+            position: relative;
+            overflow: hidden;
+            border: 2px solid rgba(221, 176, 109, 0.55);
+            border-radius: 30px;
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)),
+                var(--panel);
+            box-shadow: 0 20px 48px var(--shadow);
+            backdrop-filter: blur(10px);
+            transition: opacity 320ms ease, transform 320ms ease, box-shadow 320ms ease;
+        }
+
+        .panel::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 42%);
+            pointer-events: none;
+        }
+
+        .performer-panel {
+            display: grid;
+            align-content: start;
+            gap: 24px;
+            padding: 28px;
+        }
+
+        .eyebrow {
+            margin: 0;
+            font-size: 13px;
+            letter-spacing: 0.24em;
+            text-transform: uppercase;
+            color: rgba(245, 238, 225, 0.8);
+        }
+
+        .performer-card {
+            display: grid;
+            justify-items: center;
+            gap: 18px;
+            padding: 26px 20px 28px;
+            border-radius: 24px;
+            background: rgba(255, 250, 242, 0.08);
+        }
+
+        .performer-avatar {
+            display: block;
+            width: min(240px, 100%);
+            aspect-ratio: 1;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 4px solid rgba(221, 176, 109, 0.75);
+            background: rgba(19, 12, 9, 0.55);
+            box-shadow: 0 14px 32px rgba(0, 0, 0, 0.24);
+        }
+
+        .performer-avatar--placeholder {
+            background:
+                radial-gradient(circle at 50% 35%, rgba(255, 248, 220, 0.92) 0 16%, transparent 17%),
+                radial-gradient(circle at 50% 78%, rgba(255, 248, 220, 0.92) 0 28%, transparent 29%),
+                linear-gradient(135deg, rgba(17, 24, 39, 0.9), rgba(64, 34, 16, 0.82));
+        }
+
+        .performer-name {
+            margin: 0;
+            font-size: clamp(34px, 4vw, 56px);
+            line-height: 1;
+            text-align: center;
+            text-wrap: balance;
+        }
+
+        .performer-caption {
+            margin: 0;
+            font-size: 16px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: rgba(245, 238, 225, 0.72);
+        }
+
+        .stage-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            justify-self: start;
+            padding: 10px 16px;
+            border-radius: 999px;
+            background: rgba(23, 15, 10, 0.7);
+            color: #fff7eb;
+            font-size: 13px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+
+        .stage-badge::before {
+            content: '';
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #78d06b;
+            box-shadow: 0 0 0 6px rgba(120, 208, 107, 0.18);
+        }
+
+        .advert-panel {
+            display: grid;
+            gap: 18px;
+            padding: 24px;
+        }
+
+        .advert-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .rotation-badge {
+            padding: 9px 14px;
+            border-radius: 999px;
+            background: rgba(255, 248, 235, 0.9);
+            color: var(--ink);
+            font-size: 12px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .advert-canvas {
+            position: relative;
+            min-height: 0;
+            flex: 1;
+            border-radius: 24px;
+            overflow: hidden;
+            background: rgba(255, 250, 242, 0.96);
+            min-height: 540px;
+            isolation: isolate;
+        }
+
+        .advert-canvas::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(circle at top right, rgba(221, 176, 109, 0.15), transparent 28%),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent 30%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .live-ad-stage {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+        }
+
+        .live-ad-slide {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            opacity: 0;
+            transform: translateX(32px) scale(1.02);
+            filter: saturate(0.94);
+            transition: opacity 560ms ease, transform 560ms ease, filter 560ms ease;
+            will-change: opacity, transform, filter;
+        }
+
+        .live-ad-slide--visible {
+            opacity: 1;
+            transform: translateX(0) scale(1);
+            filter: saturate(1);
+        }
+
+        .live-ad-image {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #fff;
+        }
+
+        .live-ad-empty {
+            padding: 48px;
+            color: rgba(44, 26, 16, 0.72);
+            font-size: 28px;
+            text-align: center;
+        }
+
+        body[data-stage-active="false"] .panel {
+            opacity: 0.52;
+            transform: scale(0.986);
+            box-shadow: 0 12px 28px rgba(35, 17, 8, 0.22);
+        }
+
+        body[data-stage-active="false"] .stage-badge {
+            background: rgba(23, 15, 10, 0.56);
+        }
+
+        body[data-stage-active="false"] .stage-badge::before {
+            background: #b79b72;
+            box-shadow: 0 0 0 6px rgba(183, 155, 114, 0.16);
+        }
+
+        body[data-stage-active="false"] .stage-badge span::after {
+            content: 'Inactive';
+        }
+
+        body[data-stage-active="true"] .stage-badge span::after {
+            content: 'Live';
+        }
+
+        body[data-rotation-active="false"] .rotation-badge {
+            display: none;
+        }
+
+        @media (max-width: 1100px) {
+            body {
+                padding: 20px;
+            }
+
+            .screen {
+                grid-template-columns: 1fr;
+                min-height: auto;
+            }
+
+            .advert-canvas {
+                min-height: 420px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .panel,
+            .live-ad-slide {
+                transition: none;
+            }
+        }
+    </style>
+</head>
+<body data-stage-active="${liveState.stageActive ? 'true' : 'false'}" data-rotation-active="${liveState.advertisement.rotationIntervalMs ? 'true' : 'false'}">
+    <main class="screen">
+        <section class="panel performer-panel">
+            <p class="eyebrow">Now Performing</p>
+            <div class="performer-card">
+                ${singerAvatarMarkup}
+                <p class="performer-caption">Drowsy Stage</p>
+                <h1 id="performer-name" class="performer-name">${singerText}</h1>
+            </div>
+            <div class="stage-badge"><span></span></div>
+        </section>
+        <section class="panel advert-panel">
+            <div class="advert-header">
+                <p class="eyebrow">Sponsor Spotlight</p>
+                <div class="rotation-badge" id="rotation-badge">Rotating</div>
+            </div>
+            <div class="advert-canvas">
+                <div class="live-ad-stage" id="live-ad-stage">
+                    ${adMarkup}
+                </div>
+            </div>
+        </section>
+    </main>
+    <script>
+        const liveBody = document.body;
+        const performerNameElement = document.getElementById('performer-name');
+        const singerAvatarElement = document.getElementById('live-singer-avatar');
+        const rotationBadgeElement = document.getElementById('rotation-badge');
+        const liveAdStageElement = document.getElementById('live-ad-stage');
+
+        function buildAdSlide(nextState) {
+            const slideElement = document.createElement('div');
+
+            if (!nextState.advertisement.item) {
+                slideElement.className = 'live-ad-slide';
+                slideElement.dataset.kind = 'empty';
+
+                const emptyElement = document.createElement('div');
+                emptyElement.className = 'live-ad-empty';
+                emptyElement.textContent = 'No active ad uploaded';
+                slideElement.appendChild(emptyElement);
+                return slideElement;
+            }
+
+            slideElement.className = 'live-ad-slide';
+            slideElement.dataset.kind = 'image';
+
+            const imageElement = document.createElement('img');
+            imageElement.className = 'live-ad-image';
+            imageElement.src = nextState.advertisement.item.url;
+            imageElement.alt = nextState.advertisement.item.title;
+            slideElement.appendChild(imageElement);
+            return slideElement;
+        }
+
+        function getVisibleAdSlide() {
+            return liveAdStageElement.querySelector('.live-ad-slide--visible');
+        }
+
+        function isSameAdSlide(currentSlide, nextState) {
+            if (!currentSlide) return false;
+
+            if (!nextState.advertisement.item) {
+                return currentSlide.dataset.kind === 'empty';
+            }
+
+            const imageElement = currentSlide.querySelector('.live-ad-image');
+            return currentSlide.dataset.kind === 'image'
+                && imageElement
+                && imageElement.getAttribute('src') === nextState.advertisement.item.url
+                && imageElement.getAttribute('alt') === nextState.advertisement.item.title;
+        }
+
+        function renderSinger(nextState) {
+            const nextText = typeof nextState.singer.text === 'string' && nextState.singer.text.trim()
+                ? nextState.singer.text.trim()
+                : 'Show Offline';
+
+            performerNameElement.textContent = nextText;
+
+            if (nextState.singer.avatarUrl) {
+                if (singerAvatarElement.tagName !== 'IMG') {
+                    const replacement = document.createElement('img');
+                    replacement.id = 'live-singer-avatar';
+                    replacement.className = 'performer-avatar';
+                    singerAvatarElement.replaceWith(replacement);
+                }
+
+                const imageElement = document.getElementById('live-singer-avatar');
+                imageElement.className = 'performer-avatar';
+                imageElement.src = nextState.singer.avatarUrl;
+                imageElement.alt = nextText;
+                return;
+            }
+
+            if (singerAvatarElement.tagName === 'IMG') {
+                const placeholder = document.createElement('div');
+                placeholder.id = 'live-singer-avatar';
+                placeholder.className = 'performer-avatar performer-avatar--placeholder';
+                placeholder.setAttribute('aria-hidden', 'true');
+                document.getElementById('live-singer-avatar').replaceWith(placeholder);
+                return;
+            }
+
+            singerAvatarElement.className = 'performer-avatar performer-avatar--placeholder';
+        }
+
+        function renderAdvertisement(nextState) {
+            liveBody.dataset.rotationActive = nextState.advertisement.rotationIntervalMs ? 'true' : 'false';
+            rotationBadgeElement.textContent = nextState.advertisement.rotationIntervalMs
+                ? 'Rotating every ' + Math.max(1, Math.floor(nextState.advertisement.rotationIntervalMs / 1000)) + 's'
+                : 'Rotating';
+
+            const currentSlide = getVisibleAdSlide();
+            if (isSameAdSlide(currentSlide, nextState)) {
+                return;
+            }
+
+            const nextSlide = buildAdSlide(nextState);
+            liveAdStageElement.appendChild(nextSlide);
+
+            requestAnimationFrame(() => {
+                nextSlide.classList.add('live-ad-slide--visible');
+                if (currentSlide) currentSlide.classList.remove('live-ad-slide--visible');
+            });
+
+            if (currentSlide) {
+                setTimeout(() => {
+                    if (currentSlide.parentElement === liveAdStageElement) {
+                        currentSlide.remove();
+                    }
+                }, 600);
+            }
+        }
+
+        function renderLiveState(nextState) {
+            liveBody.dataset.stageActive = nextState.stageActive ? 'true' : 'false';
+            renderSinger(nextState);
+            renderAdvertisement(nextState);
+        }
+
+        async function refreshLiveState() {
+            const response = await fetch('/obs/live.json', { cache: 'no-store' });
+            if (!response.ok) return;
+            const nextState = await response.json();
+            renderLiveState(nextState);
+        }
+
+        refreshLiveState().catch(() => {});
+        setInterval(() => {
+            refreshLiveState().catch(() => {});
+        }, 1500);
+    </script>
+</body>
+</html>`;
+}
+
 function startObsHttpServer() {
     if (!config.OBS_HTTP_PORT) return;
 
@@ -560,6 +1019,16 @@ function startObsHttpServer() {
             return;
         }
 
+        if (url.pathname === '/obs/live.json') {
+            response.writeHead(200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Cache-Control': 'no-store',
+                'Access-Control-Allow-Origin': '*',
+            });
+            response.end(JSON.stringify(readObsLiveEventOverlay()));
+            return;
+        }
+
         if (url.pathname === '/obs/ad') {
             response.writeHead(200, {
                 'Content-Type': 'text/html; charset=utf-8',
@@ -567,6 +1036,16 @@ function startObsHttpServer() {
                 'Access-Control-Allow-Origin': '*',
             });
             response.end(buildAdvertisementOverlayHtml(currentAdvertisement));
+            return;
+        }
+
+        if (url.pathname === '/obs/live') {
+            response.writeHead(200, {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'no-store',
+                'Access-Control-Allow-Origin': '*',
+            });
+            response.end(buildLiveEventOverlayHtml(readObsLiveEventOverlay()));
             return;
         }
 

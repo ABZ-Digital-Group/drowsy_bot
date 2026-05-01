@@ -214,6 +214,22 @@ http://YOUR_VPS_HOST:OBS_HTTP_PORT/obs/ad.json
 The ad browser source dims itself when no stage session is active and switches back on when the queue is running.
 When auto-rotation is enabled, the overlay advances through the uploaded ads on the interval you set.
 
+### Combined Live Event Screen
+
+If you want one hosted page for a cloud VM or browser capture, use:
+
+```text
+http://YOUR_VPS_HOST:OBS_HTTP_PORT/obs/live
+```
+
+That page combines the current singer card and the sponsor/ad panel into one layout and refreshes automatically.
+
+There is also a matching JSON endpoint at:
+
+```text
+http://YOUR_VPS_HOST:OBS_HTTP_PORT/obs/live.json
+```
+
 ## Events System
 
 The bot can post active and upcoming Discord scheduled events.
