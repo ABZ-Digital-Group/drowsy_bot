@@ -4,6 +4,7 @@ Drowsy Bot is a Discord bot focused on three areas:
 
 - hosted stage and queue events
 - invite-link moderation and invite allowlisting
+- OBS/browser overlays for now-singing and sponsor/ad display
 
 It is built with Node.js and discord.js and stores runtime data in JSON files under `data/`.
 
@@ -143,6 +144,7 @@ The stage queue is built for hosted performances or open-mic style events.
 - `assets/obs-now-singing.txt` is updated with the current singer name for OBS text sources.
 - only one voice channel can be active per server at a time
 - multiple text-channel control panels can manage that same active voice channel
+- uploaded sponsor images are stored under `assets/ads/` for the OBS ad overlay
 
 ### OBS Text Source
 
@@ -185,6 +187,32 @@ http://YOUR_VPS_HOST:OBS_HTTP_PORT/obs/now-singing.json
 ```
 
 The browser source updates whenever OBS refreshes the page. If you want near-live updates, set the Browser Source to refresh when it becomes active or use a short custom refresh workflow through OBS/browser-source controls.
+
+### OBS Advertisement Overlay
+
+Staff can upload ad images directly through slash commands:
+
+- `/ad-upload image:<attachment> [title]`
+- `/ad-list`
+- `/ad-show index:<number>`
+- `/ad-rotate seconds:<number>`
+- `/ad-rotate-stop`
+- `/ad-remove index:<number>`
+
+The active ad is exposed for OBS at:
+
+```text
+http://YOUR_VPS_HOST:OBS_HTTP_PORT/obs/ad
+```
+
+There is also a JSON endpoint if you want to build your own browser source logic:
+
+```text
+http://YOUR_VPS_HOST:OBS_HTTP_PORT/obs/ad.json
+```
+
+The ad browser source dims itself when no stage session is active and switches back on when the queue is running.
+When auto-rotation is enabled, the overlay advances through the uploaded ads on the interval you set.
 
 ## Events System
 
@@ -242,6 +270,12 @@ If the password matches `ALLOW_INVITE_PASSWORD`, they are added to the allowlist
 - `/allow-invites`
 - `/revoke-invites`
 - `/purge-invites`
+- `/ad-upload`
+- `/ad-list`
+- `/ad-show`
+- `/ad-rotate`
+- `/ad-rotate-stop`
+- `/ad-remove`
 
 ## First-Time Setup Checklist
 

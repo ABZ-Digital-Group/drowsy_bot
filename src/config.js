@@ -3,8 +3,10 @@ const path = require('path');
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DATA_DIR = path.join(ROOT_DIR, 'data');
 const ASSETS_DIR = path.join(ROOT_DIR, 'assets');
+const ADS_DIR = path.join(ASSETS_DIR, 'ads');
 const OBS_NOW_SINGING_FILE = path.join(ASSETS_DIR, 'obs-now-singing.txt');
 const OBS_NOW_SINGING_JSON_FILE = path.join(ASSETS_DIR, 'obs-now-singing.json');
+const OBS_ADS_JSON_FILE = path.join(DATA_DIR, 'obs-ads.json');
 const parsedObsHttpPort = Number.parseInt(process.env.OBS_HTTP_PORT ?? '', 10);
 
 module.exports = {
@@ -21,12 +23,15 @@ module.exports = {
     STAGE_ADMIN_ROLES: ['Guards', 'Knights', 'Drowsy Defenders', 'God'],
     DATA_DIR,
     ASSETS_DIR,
+    ADS_DIR,
     OBS_NOW_SINGING_FILE,
     OBS_NOW_SINGING_JSON_FILE,
+    OBS_ADS_JSON_FILE,
     FILES: {
         guildConfig: path.join(DATA_DIR, 'guild-config.json'),
         allowedInvites: path.join(DATA_DIR, 'allowed-invite-users.json'),
         obsNowSinging: OBS_NOW_SINGING_FILE,
         obsNowSingingJson: OBS_NOW_SINGING_JSON_FILE,
+        obsAds: OBS_ADS_JSON_FILE,
     },
 };

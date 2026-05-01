@@ -1,10 +1,79 @@
+const fs = require('fs');
+const path = require('path');
 const {
     ChannelType,
     GuildScheduledEventStatus,
     MessageFlags,
 } = require('discord.js');
 
+const IMAGE_CONTENT_TYPE_EXTENSIONS = {
+    'image/gif': '.gif',
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
+};
+
 function createCommunityFeature({ client, config, state, helpers, stageFeature }) {
+    function sanitizeAdvertisementLabel(value) {
+        return (value ?? '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 40);
+    }
+
+    function resolveImageExtension(attachment) {
+        const attachmentExtension = path.extname(attachment.name ?? '').toLowerCase();
+        if (attachmentExtension) return attachmentExtension;
+        return IMAGE_CONTENT_TYPE_EXTENSIONS[attachment.contentType ?? ''] ?? null;
+    }
+
+    async function storeAdvertisementAttachment(attachment, title) {
+        const extension = resolveImageExtension(attachment);
+        if (!extension) {
+            throw new Error('unsupported-file-type');
+        }
+
+        const response = await fetch(attachment.url);
+        if (!response.ok) {
+            throw new Error(`download-failed:${response.status}`);
+        }
+
+        const label = sanitizeAdvertisementLabel(title || attachment.name || 'ad') || 'ad';
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const fileName = `${id}-${label}${extension}`;
+        const filePath = path.join(config.ADS_DIR, fileName);
+        const buffer = Buffer.from(await response.arrayBuffer());
+
+        await fs.promises.writeFile(filePath, buffer);
+
+        const advertisement = {
+            id,
+            title: (title ?? '').trim() || attachment.name || fileName,
+            fileName,
+            originalName: attachment.name || fileName,
+            contentType: attachment.contentType || 'application/octet-stream',
+            uploadedAt: new Date().toISOString(),
+        };
+
+        state.addAdvertisement(advertisement);
+        return advertisement;
+    }
+
+    function buildAdvertisementList() {
+        const advertisements = state.getAdvertisements();
+        if (advertisements.length === 0) return 'No ad images have been uploaded yet.';
+
+        const activeId = state.advertisements.activeId;
+        const rotationLine = state.advertisements.rotationIntervalMs
+            ? `Auto-rotation: every ${Math.floor(state.advertisements.rotationIntervalMs / 1000)}s`
+            : 'Auto-rotation: off';
+
+        return `${rotationLine}\n${advertisements
+            .map((item, index) => `${index + 1}. ${item.title}${item.id === activeId ? ' (active)' : ''}`)
+            .join('\n')}`;
+    }
+
     async function fetchActiveEventLinks(guild) {
         const scheduledEvents = await guild.scheduledEvents.fetch();
         return [...scheduledEvents.values()]
@@ -153,6 +222,12 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             'stop-queue',
             'next',
             'radio',
+            'ad-upload',
+            'ad-list',
+            'ad-show',
+            'ad-rotate',
+            'ad-rotate-stop',
+            'ad-remove',
             'allow-invites',
             'revoke-invites',
             'purge-invites',
@@ -182,6 +257,78 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                     : `Refreshed this control panel for the active stage in <#${result.targetVC}>.`;
 
             await interaction.reply(helpers.privateReply(response));
+            return;
+        }
+
+        if (interaction.commandName === 'ad-upload') {
+            const attachment = interaction.options.getAttachment('image', true);
+            const title = interaction.options.getString('title');
+
+            if (!(attachment.contentType ?? '').startsWith('image/') && !resolveImageExtension(attachment)) {
+                await interaction.reply(helpers.privateReply('Upload a PNG, JPG, GIF, or WEBP image.'));
+                return;
+            }
+
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+            try {
+                const advertisement = await storeAdvertisementAttachment(attachment, title);
+                await interaction.editReply(`Uploaded ad ${advertisement.title}. It is now the active OBS ad.`);
+            } catch (error) {
+                console.error('Ad upload failed:', error);
+                await interaction.editReply('I could not save that image right now.');
+            }
+            return;
+        }
+
+        if (interaction.commandName === 'ad-list') {
+            await interaction.reply(helpers.privateReply(buildAdvertisementList()));
+            return;
+        }
+
+        if (interaction.commandName === 'ad-show') {
+            const index = interaction.options.getInteger('index', true) - 1;
+            const advertisement = state.setActiveAdvertisementByIndex(index);
+
+            if (!advertisement) {
+                await interaction.reply(helpers.privateReply('That ad number does not exist.'));
+                return;
+            }
+
+            await interaction.reply(helpers.privateReply(`Active ad set to ${advertisement.title}.`));
+            return;
+        }
+
+        if (interaction.commandName === 'ad-rotate') {
+            const advertisements = state.getAdvertisements();
+            if (advertisements.length < 2) {
+                await interaction.reply(helpers.privateReply('Upload at least two ads before enabling auto-rotation.'));
+                return;
+            }
+
+            const seconds = interaction.options.getInteger('seconds', true);
+            state.setAdvertisementRotationIntervalMs(seconds * 1000);
+            await interaction.reply(helpers.privateReply(`Auto-rotation enabled. Ads will advance every ${seconds} seconds.`));
+            return;
+        }
+
+        if (interaction.commandName === 'ad-rotate-stop') {
+            state.setAdvertisementRotationIntervalMs(null);
+            await interaction.reply(helpers.privateReply('Auto-rotation disabled.'));
+            return;
+        }
+
+        if (interaction.commandName === 'ad-remove') {
+            const index = interaction.options.getInteger('index', true) - 1;
+            const removed = state.removeAdvertisementByIndex(index);
+
+            if (!removed) {
+                await interaction.reply(helpers.privateReply('That ad number does not exist.'));
+                return;
+            }
+
+            await fs.promises.unlink(path.join(config.ADS_DIR, removed.fileName)).catch(() => {});
+            await interaction.reply(helpers.privateReply(`Deleted ad ${removed.title}.`));
             return;
         }
 
