@@ -118,6 +118,7 @@ The stage queue is built for hosted performances or open-mic style events.
 
 ### Commands
 
+- `/queue`
 - `/start-queue`
 - `/stop-queue`
 - `/next`
@@ -131,6 +132,7 @@ The stage queue is built for hosted performances or open-mic style events.
 4. Staff can run `/start-queue` in additional text channels for the same active voice channel to create mirrored control panels.
 5. Members join or leave the lineup using buttons from any active control panel.
 6. Staff move the event forward with `/next` or the active speaker ends their turn with `Done`.
+7. Anyone can run `/queue` to post the current lineup in the channel.
 
 ### Queue Buttons
 

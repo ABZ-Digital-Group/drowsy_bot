@@ -3,6 +3,7 @@ const config = require('./config');
 
 function buildCommands() {
     return [
+        new SlashCommandBuilder().setName('queue').setDescription('Show the current stage queue'),
         new SlashCommandBuilder().setName('start-queue').setDescription('Launch a stage in this channel (Staff Only)'),
         new SlashCommandBuilder().setName('stop-queue').setDescription('Shutdown this stage (Staff Only)'),
         new SlashCommandBuilder().setName('next').setDescription('Move to the next performer (Staff Only)'),

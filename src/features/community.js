@@ -337,6 +337,17 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             return;
         }
 
+        if (interaction.commandName === 'queue') {
+            const result = stageFeature.getQueueEmbed(interaction.channel);
+            if (result.status === 'missing') {
+                await interaction.reply(helpers.privateReply('There is no active stage in this server.'));
+                return;
+            }
+
+            await interaction.reply({ embeds: [result.embed] });
+            return;
+        }
+
         const member = await interaction.guild.members.fetch(interaction.user.id);
         const staffOnlyCommands = new Set([
             'start-queue',

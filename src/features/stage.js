@@ -158,6 +158,16 @@ function createStageFeature({ config, state, helpers }) {
         return { status: 'created', targetVC: session.targetVC };
     }
 
+    function getQueueEmbed(channel) {
+        const session = state.peekGuildStageSession(channel.guild.id);
+        if (!session) return { status: 'missing' };
+
+        return {
+            status: 'ok',
+            embed: buildQueueEmbed(channel, session),
+        };
+    }
+
     async function nextSpeaker(channel) {
         const session = state.peekGuildStageSession(channel.guild.id);
         if (!session) return { status: 'missing' };
@@ -258,6 +268,7 @@ function createStageFeature({ config, state, helpers }) {
 
     return {
         startStage,
+        getQueueEmbed,
         nextSpeaker,
         toggleRadio,
         stopStage,
