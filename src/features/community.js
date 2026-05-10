@@ -376,9 +376,10 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 return;
             }
 
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const result = await stageFeature.startStage(interaction.channel, member.voice.channelId);
             if (result.status === 'conflict') {
-                await interaction.reply(helpers.privateReply(`A stage is already active in <#${result.targetVC}>. You can add more control panels only for that same voice channel.`));
+                await interaction.editReply(`A stage is already active in <#${result.targetVC}>. You can add more control panels only for that same voice channel.`);
                 return;
             }
 
@@ -389,7 +390,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                     : `Refreshed this control panel for the active stage in <#${result.targetVC}>.`;
 
             await syncStageAdvertisementsForGuild(interaction.guild);
-            await interaction.reply(helpers.privateReply(response));
+            await interaction.editReply(response);
             return;
         }
 
@@ -429,8 +430,9 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 return;
             }
 
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             await syncStageAdvertisementsForGuild(interaction.guild);
-            await interaction.reply(helpers.privateReply(`Active ad set to ${advertisement.title}.`));
+            await interaction.editReply(`Active ad set to ${advertisement.title}.`);
             return;
         }
 
@@ -442,16 +444,18 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             }
 
             const seconds = interaction.options.getInteger('seconds', true);
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             state.setAdvertisementRotationIntervalMs(seconds * 1000);
             await syncStageAdvertisementsForGuild(interaction.guild);
-            await interaction.reply(helpers.privateReply(`Auto-rotation enabled. Ads will advance every ${seconds} seconds.`));
+            await interaction.editReply(`Auto-rotation enabled. Ads will advance every ${seconds} seconds.`);
             return;
         }
 
         if (interaction.commandName === 'ad-rotate-stop') {
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             state.setAdvertisementRotationIntervalMs(null);
             await syncStageAdvertisementsForGuild(interaction.guild);
-            await interaction.reply(helpers.privateReply('Auto-rotation disabled.'));
+            await interaction.editReply('Auto-rotation disabled.');
             return;
         }
 
@@ -464,28 +468,31 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 return;
             }
 
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             await fs.promises.unlink(path.join(config.ADS_DIR, removed.fileName)).catch(() => {});
             await syncStageAdvertisementsForGuild(interaction.guild);
-            await interaction.reply(helpers.privateReply(`Deleted ad ${removed.title}.`));
+            await interaction.editReply(`Deleted ad ${removed.title}.`);
             return;
         }
 
         if (interaction.commandName === 'next') {
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const result = await stageFeature.nextSpeaker(interaction.channel);
             if (result.status === 'missing') {
-                await interaction.reply(helpers.privateReply('There is no active stage in this server.'));
+                await interaction.editReply('There is no active stage in this server.');
                 return;
             }
 
             await syncStageAdvertisementsForGuild(interaction.guild);
-            await interaction.reply(helpers.privateReply('Moved to the next performer.'));
+            await interaction.editReply('Moved to the next performer.');
             return;
         }
 
         if (interaction.commandName === 'radio') {
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const result = await stageFeature.toggleRadio(interaction.channel);
             if (result.status === 'missing') {
-                await interaction.reply(helpers.privateReply('There is no active stage in this server.'));
+                await interaction.editReply('There is no active stage in this server.');
                 return;
             }
 
@@ -493,18 +500,19 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 await syncStageAdvertisementsForGuild(interaction.guild);
             }
 
-            await interaction.reply(helpers.privateReply(result.status === 'started' ? 'Radio started.' : 'Radio stopped.'));
+            await interaction.editReply(result.status === 'started' ? 'Radio started.' : 'Radio stopped.');
             return;
         }
 
         if (interaction.commandName === 'stop-queue') {
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const result = await stageFeature.stopStage(interaction.channel);
             if (result.status === 'missing') {
-                await interaction.reply(helpers.privateReply('There is no active stage in this server.'));
+                await interaction.editReply('There is no active stage in this server.');
                 return;
             }
 
-            await interaction.reply(helpers.privateReply('Event finished. Connection closed.'));
+            await interaction.editReply('Event finished. Connection closed.');
             return;
         }
 
