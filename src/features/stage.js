@@ -244,6 +244,9 @@ function createStageFeature({ config, state, helpers }) {
             }
 
             session.queue.push(interaction.user.id);
+            if (!session.currentSpeaker) {
+                await handleNextSpeaker(interaction.guild, session);
+            }
         } else if (interaction.customId === 'leave') {
             session.queue = session.queue.filter(id => id !== interaction.user.id);
             if (session.currentSpeaker === interaction.user.id) {

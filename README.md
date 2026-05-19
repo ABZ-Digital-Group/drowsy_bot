@@ -13,6 +13,7 @@ It is built with Node.js and discord.js and stores runtime data in JSON files un
 - Multi-stage queue flow for voice events
 - Intermission radio playback from a local MP3 file
 - Public scheduled-event lookup
+- Staff announcement command for posting through the bot
 - Invite moderation with allowlist and cleanup tools
 
 ## Removed Systems
@@ -131,8 +132,9 @@ The stage queue is built for hosted performances or open-mic style events.
 3. The bot posts a queue panel with buttons.
 4. Staff can run `/start-queue` in additional text channels for the same active voice channel to create mirrored control panels.
 5. Members join or leave the lineup using buttons from any active control panel.
-6. Staff move the event forward with `/next` or the active speaker ends their turn with `Done`.
-7. Anyone can run `/queue` to post the current lineup in the channel.
+6. If nobody is currently up, the first person to join is moved on stage immediately.
+7. Staff move the event forward with `/next` or the active speaker ends their turn with `Done`.
+8. Anyone can run `/queue` to post the current lineup in the channel.
 
 ### Queue Buttons
 
@@ -282,6 +284,8 @@ If the password matches `ALLOW_INVITE_PASSWORD`, they are added to the allowlist
 
 ### Staff Commands
 
+- `/announce message:<text> [title] [color] [channel]`
+- `/announce-color [color] [reset]`
 - `/start-queue`
 - `/stop-queue`
 - `/next`

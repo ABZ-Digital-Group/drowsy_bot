@@ -6,6 +6,7 @@ const {
     EmbedBuilder,
     GuildScheduledEventStatus,
     MessageFlags,
+    PermissionFlagsBits,
 } = require('discord.js');
 
 const IMAGE_CONTENT_TYPE_EXTENSIONS = {
@@ -17,6 +18,22 @@ const IMAGE_CONTENT_TYPE_EXTENSIONS = {
 
 function createCommunityFeature({ client, config, state, helpers, stageFeature }) {
     let advertisementSyncTimer = null;
+    const fallbackAnnouncementColor = 0x5865F2;
+
+    function parseAnnouncementColor(value) {
+        if (!value) return null;
+
+        const normalized = value.trim();
+        if (!/^#?[0-9a-fA-F]{6}$/.test(normalized)) {
+            return { error: 'Use a 6-digit hex color like #5865F2.' };
+        }
+
+        const hex = `#${normalized.replace(/^#/, '').toUpperCase()}`;
+        return {
+            hex,
+            value: Number.parseInt(hex.slice(1), 16),
+        };
+    }
 
     function sanitizeAdvertisementLabel(value) {
         return (value ?? '')
@@ -350,6 +367,8 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
         const member = await interaction.guild.members.fetch(interaction.user.id);
         const staffOnlyCommands = new Set([
+            'announce',
+            'announce-color',
             'start-queue',
             'stop-queue',
             'next',
@@ -367,6 +386,93 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
         if (staffOnlyCommands.has(interaction.commandName) && !helpers.isStaff(member)) {
             await interaction.reply(helpers.privateReply('Staff only.'));
+            return;
+        }
+
+        if (interaction.commandName === 'announce-color') {
+            const guildConfig = state.getGuildConfig(interaction.guild.id);
+            const shouldReset = interaction.options.getBoolean('reset') === true;
+            const colorInput = interaction.options.getString('color');
+
+            if (shouldReset) {
+                delete guildConfig.announcementColor;
+                state.persistGuildConfigs();
+                await interaction.reply(helpers.privateReply('Default announcement embed color cleared.'));
+                return;
+            }
+
+            if (!colorInput) {
+                const currentColor = typeof guildConfig.announcementColor === 'string'
+                    ? guildConfig.announcementColor
+                    : null;
+                await interaction.reply(helpers.privateReply(
+                    currentColor
+                        ? `Default announcement embed color is ${currentColor}.`
+                        : 'No default announcement embed color is saved for this server.'
+                ));
+                return;
+            }
+
+            const color = parseAnnouncementColor(colorInput);
+            if (color?.error) {
+                await interaction.reply(helpers.privateReply(color.error));
+                return;
+            }
+
+            guildConfig.announcementColor = color.hex;
+            state.persistGuildConfigs();
+            await interaction.reply(helpers.privateReply(`Default announcement embed color set to ${color.hex}.`));
+            return;
+        }
+
+        if (interaction.commandName === 'announce') {
+            const targetChannel = interaction.options.getChannel('channel') ?? interaction.channel;
+            if (!targetChannel?.isTextBased() || targetChannel.isDMBased?.()) {
+                await interaction.reply(helpers.privateReply('Choose a server text channel for the announcement.'));
+                return;
+            }
+
+            const message = interaction.options.getString('message', true);
+            const title = interaction.options.getString('title')?.trim() || null;
+            const guildConfig = state.getGuildConfig(interaction.guild.id);
+            const requestedColor = parseAnnouncementColor(interaction.options.getString('color'));
+            if (requestedColor?.error) {
+                await interaction.reply(helpers.privateReply(requestedColor.error));
+                return;
+            }
+
+            const defaultColor = parseAnnouncementColor(guildConfig.announcementColor);
+            const embedColor = requestedColor?.value ?? defaultColor?.value ?? fallbackAnnouncementColor;
+
+            const botMember = interaction.guild.members.me ?? await interaction.guild.members.fetchMe();
+            const permissions = targetChannel.permissionsFor(botMember);
+            const requiredPermissions = targetChannel.isThread()
+                ? [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessagesInThreads]
+                : [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages];
+
+            if (!permissions?.has(requiredPermissions)) {
+                await interaction.reply(helpers.privateReply(`I can't send messages in <#${targetChannel.id}>.`));
+                return;
+            }
+
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+            try {
+                const payload = title || requestedColor?.value
+                    ? {
+                        embeds: [new EmbedBuilder()
+                            .setDescription(message)
+                            .setColor(embedColor)
+                            .setTitle(title ?? 'Announcement')],
+                    }
+                    : { content: message };
+
+                await targetChannel.send(payload);
+                await interaction.editReply(`Announcement sent to <#${targetChannel.id}>.`);
+            } catch (error) {
+                console.error('Announcement send failed:', error);
+                await interaction.editReply(`I couldn't send the announcement to <#${targetChannel.id}>.`);
+            }
             return;
         }
 
