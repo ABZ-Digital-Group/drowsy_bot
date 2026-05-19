@@ -61,17 +61,25 @@ function createStageFeature({ config, state, helpers }) {
     function buildQueueEmbed(channel, session) {
         return new EmbedBuilder()
             .setTitle('Drowsy Multi-Stage Queue')
-            .setDescription(`On Stage: ${session.currentSpeaker ? `<@${session.currentSpeaker}>` : 'Open Mic'}\nCurrent VC: <#${session.targetVC}>\n\nComing Up:\n${session.queue.length > 0 ? session.queue.map((id, index) => `${index + 1}. <@${id}>`).join('\n') : 'The queue is empty.'}`)
+            .setDescription(`On Stage: ${session.currentSpeaker ? `<@${session.currentSpeaker}>` : 'Open Mic'}\nCurrent VC: <#${session.targetVC}>\nQueue Status: ${session.acceptingJoins ? 'Open' : 'Closed'}\n\nComing Up:\n${session.queue.length > 0 ? session.queue.map((id, index) => `${index + 1}. <@${id}>`).join('\n') : 'The queue is empty.'}`)
             .setColor(0x5865F2)
             .setFooter({ text: `Control Room: #${channel.name}` });
     }
 
-    function buildQueueButtons() {
-        return new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('join').setLabel('Join Queue').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('leave').setLabel('Leave').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('finished').setLabel('Done').setStyle(ButtonStyle.Success)
-        );
+    function buildQueueButtons(session) {
+        return [
+            new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('join').setLabel('Join Queue').setStyle(ButtonStyle.Primary).setDisabled(!session.acceptingJoins),
+                new ButtonBuilder().setCustomId('leave').setLabel('Leave').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('finished').setLabel('Done').setStyle(ButtonStyle.Success)
+            ),
+            new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('toggle-joins')
+                    .setLabel(session.acceptingJoins ? 'Staff: Close Queue' : 'Staff: Open Queue')
+                    .setStyle(session.acceptingJoins ? ButtonStyle.Danger : ButtonStyle.Success)
+            ),
+        ];
     }
 
     async function refreshPanel(channel, session) {
@@ -81,7 +89,7 @@ function createStageFeature({ config, state, helpers }) {
             if (previousMessage) await previousMessage.delete().catch(() => {});
         }
 
-        const message = await channel.send({ embeds: [buildQueueEmbed(channel, session)], components: [buildQueueButtons()] });
+        const message = await channel.send({ embeds: [buildQueueEmbed(channel, session)], components: buildQueueButtons(session) });
         session.panelMessageIds.set(channel.id, message.id);
     }
 
@@ -190,6 +198,15 @@ function createStageFeature({ config, state, helpers }) {
         return { status: 'started' };
     }
 
+    async function setJoinState(channel, acceptingJoins) {
+        const session = state.peekGuildStageSession(channel.guild.id);
+        if (!session) return { status: 'missing' };
+
+        session.acceptingJoins = acceptingJoins;
+        await refreshAllPanels(channel.guild, session);
+        return { status: 'ok', acceptingJoins: session.acceptingJoins };
+    }
+
     async function stopStage(channel) {
         const session = state.peekGuildStageSession(channel.guild.id);
         if (!session) return { status: 'missing' };
@@ -233,6 +250,11 @@ function createStageFeature({ config, state, helpers }) {
         const member = await interaction.guild.members.fetch(interaction.user.id);
 
         if (interaction.customId === 'join') {
+            if (!session.acceptingJoins) {
+                await interaction.reply(helpers.privateReply('This queue is closed to new joiners right now.'));
+                return true;
+            }
+
             if (!member.voice.channel || member.voice.channelId !== session.targetVC) {
                 await interaction.reply(helpers.privateReply(`You must be in <#${session.targetVC}> to join this queue.`));
                 return true;
@@ -260,6 +282,13 @@ function createStageFeature({ config, state, helpers }) {
             }
 
             await handleNextSpeaker(interaction.guild, session);
+        } else if (interaction.customId === 'toggle-joins') {
+            if (!helpers.isStaff(member)) {
+                await interaction.reply(helpers.privateReply('Staff only.'));
+                return true;
+            }
+
+            session.acceptingJoins = !session.acceptingJoins;
         } else {
             return false;
         }
@@ -274,6 +303,7 @@ function createStageFeature({ config, state, helpers }) {
         getQueueEmbed,
         nextSpeaker,
         toggleRadio,
+        setJoinState,
         stopStage,
         handleButtonInteraction,
     };

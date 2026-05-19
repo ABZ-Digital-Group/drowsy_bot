@@ -121,6 +121,8 @@ The stage queue is built for hosted performances or open-mic style events.
 
 - `/queue`
 - `/start-queue`
+- `/open-queue`
+- `/close-queue`
 - `/stop-queue`
 - `/next`
 - `/radio`
@@ -135,12 +137,14 @@ The stage queue is built for hosted performances or open-mic style events.
 6. If nobody is currently up, the first person to join is moved on stage immediately.
 7. Staff move the event forward with `/next` or the active speaker ends their turn with `Done`.
 8. Anyone can run `/queue` to post the current lineup in the channel.
+9. Staff can close the queue to new joiners with `/close-queue` and reopen it with `/open-queue`.
 
 ### Queue Buttons
 
 - `Join Queue`
 - `Leave`
 - `Done`
+- `Staff: Close Queue` / `Staff: Open Queue`
 
 ### Notes
 

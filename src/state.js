@@ -144,6 +144,7 @@ function createState(config) {
                 state.guildStageSessions.set(guildId, {
                     queue: [],
                     currentSpeaker: null,
+                    acceptingJoins: true,
                     panelMessageIds: new Map(),
                     adMessageIds: new Map(),
                     panelChannelIds: new Set(),

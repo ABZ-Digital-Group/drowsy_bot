@@ -370,6 +370,8 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             'announce',
             'announce-color',
             'start-queue',
+            'open-queue',
+            'close-queue',
             'stop-queue',
             'next',
             'radio',
@@ -497,6 +499,20 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
             await syncStageAdvertisementsForGuild(interaction.guild);
             await interaction.editReply(response);
+            return;
+        }
+
+        if (interaction.commandName === 'open-queue' || interaction.commandName === 'close-queue') {
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            const result = await stageFeature.setJoinState(interaction.channel, interaction.commandName === 'open-queue');
+            if (result.status === 'missing') {
+                await interaction.editReply('There is no active stage in this server.');
+                return;
+            }
+
+            await interaction.editReply(result.acceptingJoins
+                ? 'Queue reopened. New people can join again.'
+                : 'Queue closed. New people cannot join right now.');
             return;
         }
 
