@@ -20,6 +20,10 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     let advertisementSyncTimer = null;
     const fallbackAnnouncementColor = 0x5865F2;
 
+    function normalizeAnnouncementText(value) {
+        return value.replace(/\\n/g, '\n');
+    }
+
     function parseAnnouncementColor(value) {
         if (!value) return null;
 
@@ -434,7 +438,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 return;
             }
 
-            const message = interaction.options.getString('message', true);
+            const message = normalizeAnnouncementText(interaction.options.getString('message', true));
             const title = interaction.options.getString('title')?.trim() || null;
             const guildConfig = state.getGuildConfig(interaction.guild.id);
             const requestedColor = parseAnnouncementColor(interaction.options.getString('color'));

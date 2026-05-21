@@ -289,6 +289,7 @@ If the password matches `ALLOW_INVITE_PASSWORD`, they are added to the allowlist
 ### Staff Commands
 
 - `/announce message:<text> [title] [color] [channel]`
+  Use `\n` inside `message` if you want line breaks in the posted announcement.
 - `/announce-color [color] [reset]`
 - `/start-queue`
 - `/stop-queue`
