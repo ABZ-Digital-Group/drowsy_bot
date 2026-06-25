@@ -20,6 +20,7 @@ const IMAGE_CONTENT_TYPE_EXTENSIONS = {
 
 function createCommunityFeature({ client, config, state, helpers, stageFeature }) {
     let advertisementSyncTimer = null;
+    let hoursCardRenderingDisabled = false;
     const fallbackAnnouncementColor = 0x5865F2;
     const hourWindows = [1, 7, 14];
 
@@ -394,12 +395,24 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         };
         const totals = state.getVoiceHourTotals(message.guild.id, targetUser.id);
 
+        if (hoursCardRenderingDisabled) {
+            await message.reply({ embeds: [buildHoursEmbed(subject, totals, message.guild)] });
+            return;
+        }
+
         try {
             const card = await buildHoursCard({ subject, guild: message.guild, totals });
             const attachment = new AttachmentBuilder(card, { name: 'voice-hours.png' });
             await message.reply({ files: [attachment] });
         } catch (error) {
-            console.error('Failed to render hours card:', error);
+            const errorText = `${error?.message ?? ''} ${error?.cause?.message ?? ''}`;
+            if (errorText.includes('native binding') || errorText.includes('@napi-rs/canvas-linux')) {
+                hoursCardRenderingDisabled = true;
+                console.warn('Hours image cards disabled: @napi-rs/canvas native Linux binding is missing. Run npm install --include=optional on the server, then restart the bot.');
+            } else {
+                console.error('Failed to render hours card:', error);
+            }
+
             await message.reply({ embeds: [buildHoursEmbed(subject, totals, message.guild)] });
         }
     }
