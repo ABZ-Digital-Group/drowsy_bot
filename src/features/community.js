@@ -19,6 +19,32 @@ const IMAGE_CONTENT_TYPE_EXTENSIONS = {
 function createCommunityFeature({ client, config, state, helpers, stageFeature }) {
     let advertisementSyncTimer = null;
     const fallbackAnnouncementColor = 0x5865F2;
+    const hourWindows = [1, 7, 14];
+
+    function formatDuration(milliseconds) {
+        const totalMinutes = Math.floor(milliseconds / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+
+        if (hours === 0) return `${minutes}m`;
+        if (minutes === 0) return `${hours}h`;
+        return `${hours}h ${minutes}m`;
+    }
+
+    function buildHoursEmbed(subject, totals) {
+        return new EmbedBuilder()
+            .setTitle('Voice Hours')
+            .setDescription(`Totals for ${subject}`)
+            .setColor(0x78D06B)
+            .setThumbnail(subject.user.displayAvatarURL({ size: 128 }))
+            .addFields(hourWindows.map(days => ({
+                name: days === 1 ? 'Last 24 hours' : `Last ${days} days`,
+                value: formatDuration(totals[days] ?? 0),
+                inline: true,
+            })))
+            .setFooter({ text: 'Voice channel time' })
+            .setTimestamp(new Date());
+    }
 
     function normalizeAnnouncementText(value) {
         return value.replace(/\\n/g, '\n');
@@ -294,8 +320,54 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         await syncAllStageAdvertisements();
     }
 
+    async function restoreVoiceHourSessions() {
+        const now = new Date();
+        const activeKeys = new Set();
+        const checkedGuildIds = new Set();
+
+        for (const guild of client.guilds.cache.values()) {
+            const channels = await guild.channels.fetch().catch(() => null);
+            if (!channels) continue;
+            checkedGuildIds.add(guild.id);
+
+            for (const channel of channels.values()) {
+                if (channel?.type !== ChannelType.GuildVoice && channel?.type !== ChannelType.GuildStageVoice) continue;
+
+                for (const member of channel.members.values()) {
+                    if (member.user.bot) continue;
+
+                    activeKeys.add(`${guild.id}:${member.id}`);
+                    state.startVoiceHourSession(guild.id, member.id, channel.id, now);
+                }
+            }
+        }
+
+        for (const session of Object.values(state.voiceHours.active)) {
+            if (checkedGuildIds.has(session.guildId) && !activeKeys.has(`${session.guildId}:${session.userId}`)) {
+                state.endVoiceHourSession(session.guildId, session.userId, now);
+            }
+        }
+    }
+
+    async function sendHoursGui(message) {
+        const targetUser = message.mentions.users.first() ?? message.author;
+        const member = await message.guild.members.fetch(targetUser.id).catch(() => null);
+        const subject = member ?? {
+            user: targetUser,
+            toString: () => `<@${targetUser.id}>`,
+        };
+        const totals = state.getVoiceHourTotals(message.guild.id, targetUser.id);
+
+        await message.reply({ embeds: [buildHoursEmbed(subject, totals)] });
+    }
+
     async function handleMessageCreate(message) {
         if (message.author.bot) return;
+
+        if (message.guild && /^-h(?:\s|$)/i.test(message.content.trim())) {
+            await sendHoursGui(message);
+            return;
+        }
 
         if (message.guild && message.content.trim().toLowerCase() === '-events') {
             try {
@@ -671,9 +743,33 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         }
     }
 
+    async function handleVoiceStateUpdate(oldState, newState) {
+        const member = newState.member ?? oldState.member;
+        const guild = newState.guild ?? oldState.guild;
+        if (!member || member.user.bot || !guild) return;
+
+        const oldChannelId = oldState.channelId;
+        const newChannelId = newState.channelId;
+        if (oldChannelId === newChannelId) return;
+
+        if (!oldChannelId && newChannelId) {
+            state.startVoiceHourSession(guild.id, member.id, newChannelId);
+            return;
+        }
+
+        if (oldChannelId && !newChannelId) {
+            state.endVoiceHourSession(guild.id, member.id);
+            return;
+        }
+
+        state.moveVoiceHourSession(guild.id, member.id, newChannelId);
+    }
+
     return {
         restoreScheduledTasks,
+        restoreVoiceHourSessions,
         handleMessageCreate,
+        handleVoiceStateUpdate,
         handleInteraction,
     };
 }

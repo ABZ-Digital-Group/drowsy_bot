@@ -1104,9 +1104,11 @@ client.once('clientReady', async () => {
     }
 
     await communityFeature.restoreScheduledTasks();
+    await communityFeature.restoreVoiceHourSessions();
 });
 
 bindAsync('messageCreate', message => communityFeature.handleMessageCreate(message));
+bindAsync('voiceStateUpdate', (oldState, newState) => communityFeature.handleVoiceStateUpdate(oldState, newState));
 bindAsync('interactionCreate', interaction => communityFeature.handleInteraction(interaction));
 
 client.login(config.BOT_TOKEN);

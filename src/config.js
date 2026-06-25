@@ -30,6 +30,7 @@ module.exports = {
     FILES: {
         guildConfig: path.join(DATA_DIR, 'guild-config.json'),
         allowedInvites: path.join(DATA_DIR, 'allowed-invite-users.json'),
+        voiceHours: path.join(DATA_DIR, 'voice-hours.json'),
         obsNowSinging: OBS_NOW_SINGING_FILE,
         obsNowSingingJson: OBS_NOW_SINGING_JSON_FILE,
         obsAds: OBS_ADS_JSON_FILE,

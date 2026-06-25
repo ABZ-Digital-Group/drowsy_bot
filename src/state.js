@@ -26,6 +26,13 @@ function createState(config) {
         }, null, 2));
     }
 
+    if (!fs.existsSync(config.FILES.voiceHours)) {
+        fs.writeFileSync(config.FILES.voiceHours, JSON.stringify({
+            sessions: [],
+            active: {},
+        }, null, 2));
+    }
+
     function readJsonFile(filePath, fallbackValue) {
         if (!fs.existsSync(filePath)) return fallbackValue;
 
@@ -71,19 +78,151 @@ function createState(config) {
         };
     }
 
+    function getVoiceHoursKey(guildId, userId) {
+        return `${guildId}:${userId}`;
+    }
+
+    function normalizeIsoDate(value) {
+        const timestamp = Date.parse(value ?? '');
+        return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+    }
+
+    function loadVoiceHoursState() {
+        const parsed = readJsonFile(config.FILES.voiceHours, {
+            sessions: [],
+            active: {},
+        });
+        const sessions = Array.isArray(parsed?.sessions)
+            ? parsed.sessions
+                .map(session => ({
+                    guildId: typeof session?.guildId === 'string' ? session.guildId : null,
+                    userId: typeof session?.userId === 'string' ? session.userId : null,
+                    channelId: typeof session?.channelId === 'string' ? session.channelId : null,
+                    startedAt: normalizeIsoDate(session?.startedAt),
+                    endedAt: normalizeIsoDate(session?.endedAt),
+                }))
+                .filter(session => session.guildId && session.userId && session.startedAt && session.endedAt)
+            : [];
+        const active = {};
+
+        if (parsed?.active && typeof parsed.active === 'object') {
+            for (const [key, session] of Object.entries(parsed.active)) {
+                const guildId = typeof session?.guildId === 'string' ? session.guildId : key.split(':')[0];
+                const userId = typeof session?.userId === 'string' ? session.userId : key.split(':')[1];
+                const startedAt = normalizeIsoDate(session?.startedAt);
+                if (!guildId || !userId || !startedAt) continue;
+
+                active[getVoiceHoursKey(guildId, userId)] = {
+                    guildId,
+                    userId,
+                    channelId: typeof session?.channelId === 'string' ? session.channelId : null,
+                    startedAt,
+                };
+            }
+        }
+
+        return { sessions, active };
+    }
+
     const guildConfigs = readJsonFile(config.FILES.guildConfig, {});
     const advertisementState = loadAdvertisementState();
+    const voiceHoursState = loadVoiceHoursState();
 
     const state = {
         guildConfigs,
         allowedInviteUsers: loadAllowedInviteUsers(),
         advertisements: advertisementState,
+        voiceHours: voiceHoursState,
         guildStageSessions: new Map(),
         saveAllowedInviteUsers() {
             writeJsonFile(config.FILES.allowedInvites, { users: [...state.allowedInviteUsers] });
         },
         saveAdvertisements() {
             writeJsonFile(config.FILES.obsAds, state.advertisements);
+        },
+        saveVoiceHours() {
+            writeJsonFile(config.FILES.voiceHours, state.voiceHours);
+        },
+        pruneVoiceHourSessions(now = new Date()) {
+            const cutoff = now.getTime() - (16 * 24 * 60 * 60 * 1000);
+            state.voiceHours.sessions = state.voiceHours.sessions.filter(session => Date.parse(session.endedAt) >= cutoff);
+        },
+        startVoiceHourSession(guildId, userId, channelId, startedAt = new Date()) {
+            const key = getVoiceHoursKey(guildId, userId);
+            if (state.voiceHours.active[key]) {
+                state.voiceHours.active[key].channelId = channelId;
+                state.saveVoiceHours();
+                return state.voiceHours.active[key];
+            }
+
+            state.voiceHours.active[key] = {
+                guildId,
+                userId,
+                channelId,
+                startedAt: startedAt.toISOString(),
+            };
+            state.saveVoiceHours();
+            return state.voiceHours.active[key];
+        },
+        moveVoiceHourSession(guildId, userId, channelId) {
+            const key = getVoiceHoursKey(guildId, userId);
+            if (!state.voiceHours.active[key]) return null;
+            state.voiceHours.active[key].channelId = channelId;
+            state.saveVoiceHours();
+            return state.voiceHours.active[key];
+        },
+        endVoiceHourSession(guildId, userId, endedAt = new Date()) {
+            const key = getVoiceHoursKey(guildId, userId);
+            const activeSession = state.voiceHours.active[key];
+            if (!activeSession) return null;
+
+            delete state.voiceHours.active[key];
+
+            const startedAtMs = Date.parse(activeSession.startedAt);
+            const endedAtMs = endedAt.getTime();
+            if (Number.isFinite(startedAtMs) && endedAtMs > startedAtMs) {
+                const completedSession = {
+                    ...activeSession,
+                    endedAt: endedAt.toISOString(),
+                };
+                state.voiceHours.sessions.push(completedSession);
+                state.pruneVoiceHourSessions(endedAt);
+                state.saveVoiceHours();
+                return completedSession;
+            }
+
+            state.saveVoiceHours();
+            return null;
+        },
+        getVoiceHourTotals(guildId, userId, now = new Date()) {
+            const nowMs = now.getTime();
+            const windows = [1, 7, 14];
+            const totals = Object.fromEntries(windows.map(days => [days, 0]));
+            const sessions = [
+                ...state.voiceHours.sessions,
+                ...Object.values(state.voiceHours.active)
+                    .filter(session => session.guildId === guildId && session.userId === userId)
+                    .map(session => ({ ...session, endedAt: now.toISOString() })),
+            ];
+
+            for (const session of sessions) {
+                if (session.guildId !== guildId || session.userId !== userId) continue;
+
+                const startedAtMs = Date.parse(session.startedAt);
+                const endedAtMs = Date.parse(session.endedAt);
+                if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs)) continue;
+
+                for (const days of windows) {
+                    const windowStartMs = nowMs - (days * 24 * 60 * 60 * 1000);
+                    const overlapStartMs = Math.max(startedAtMs, windowStartMs);
+                    const overlapEndMs = Math.min(endedAtMs, nowMs);
+                    if (overlapEndMs > overlapStartMs) {
+                        totals[days] += overlapEndMs - overlapStartMs;
+                    }
+                }
+            }
+
+            return totals;
         },
         getAdvertisements() {
             return state.advertisements.items;
