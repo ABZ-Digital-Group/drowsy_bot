@@ -9,6 +9,8 @@ const {
     PermissionFlagsBits,
 } = require('discord.js');
 
+const { buildHoursCard } = require('../hour-card');
+
 const IMAGE_CONTENT_TYPE_EXTENSIONS = {
     'image/gif': '.gif',
     'image/jpeg': '.jpg',
@@ -386,11 +388,20 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const member = await message.guild.members.fetch(targetUser.id).catch(() => null);
         const subject = member ?? {
             user: targetUser,
+            displayName: targetUser.globalName ?? targetUser.username,
+            joinedAt: null,
             toString: () => `<@${targetUser.id}>`,
         };
         const totals = state.getVoiceHourTotals(message.guild.id, targetUser.id);
 
-        await message.reply({ embeds: [buildHoursEmbed(subject, totals, message.guild)] });
+        try {
+            const card = buildHoursCard({ subject, guild: message.guild, totals });
+            const attachment = new AttachmentBuilder(card, { name: 'voice-hours.png' });
+            await message.reply({ files: [attachment] });
+        } catch (error) {
+            console.error('Failed to render hours card:', error);
+            await message.reply({ embeds: [buildHoursEmbed(subject, totals, message.guild)] });
+        }
     }
 
     async function handleMessageCreate(message) {
