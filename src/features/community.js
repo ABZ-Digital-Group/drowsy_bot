@@ -21,28 +21,60 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     const fallbackAnnouncementColor = 0x5865F2;
     const hourWindows = [1, 7, 14];
 
-    function formatDuration(milliseconds) {
-        const totalMinutes = Math.floor(milliseconds / 60000);
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-
-        if (hours === 0) return `${minutes}m`;
-        if (minutes === 0) return `${hours}h`;
-        return `${hours}h ${minutes}m`;
+    function formatHours(milliseconds) {
+        return (milliseconds / 3600000).toFixed(2);
     }
 
-    function buildHoursEmbed(subject, totals) {
+    function formatProfileDate(date) {
+        if (!date) return 'Unknown';
+
+        return new Intl.DateTimeFormat('en-US', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+            timeZone: 'UTC',
+        }).format(date);
+    }
+
+    function buildVoiceActivityRows(totals) {
+        return hourWindows
+            .map(days => {
+                const label = `${days}d`.padEnd(3, ' ');
+                const hours = formatHours(totals[days] ?? 0).padStart(6, ' ');
+                return `${label} ${hours} hours`;
+            })
+            .join('\n');
+    }
+
+    function buildHoursEmbed(subject, totals, guild) {
+        const displayName = subject.displayName ?? subject.user.globalName ?? subject.user.username;
+        const joinedAt = subject.joinedAt ?? null;
+
         return new EmbedBuilder()
-            .setTitle('Voice Hours')
-            .setDescription(`Totals for ${subject}`)
-            .setColor(0x78D06B)
+            .setAuthor({
+                name: `${displayName} - ${guild.name}`,
+                iconURL: subject.user.displayAvatarURL({ size: 128 }),
+            })
+            .setColor(0x2F3136)
             .setThumbnail(subject.user.displayAvatarURL({ size: 128 }))
-            .addFields(hourWindows.map(days => ({
-                name: days === 1 ? 'Last 24 hours' : `Last ${days} days`,
-                value: formatDuration(totals[days] ?? 0),
-                inline: true,
-            })))
-            .setFooter({ text: 'Voice channel time' })
+            .addFields(
+                {
+                    name: 'Created On',
+                    value: formatProfileDate(subject.user.createdAt),
+                    inline: true,
+                },
+                {
+                    name: 'Joined On',
+                    value: formatProfileDate(joinedAt),
+                    inline: true,
+                },
+                {
+                    name: 'Voice Activity',
+                    value: `\`\`\`txt\n${buildVoiceActivityRows(totals)}\n\`\`\``,
+                    inline: false,
+                }
+            )
+            .setFooter({ text: 'Server Lookback: Last 14 days - Timezone: UTC' })
             .setTimestamp(new Date());
     }
 
@@ -358,7 +390,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         };
         const totals = state.getVoiceHourTotals(message.guild.id, targetUser.id);
 
-        await message.reply({ embeds: [buildHoursEmbed(subject, totals)] });
+        await message.reply({ embeds: [buildHoursEmbed(subject, totals, message.guild)] });
     }
 
     async function handleMessageCreate(message) {
