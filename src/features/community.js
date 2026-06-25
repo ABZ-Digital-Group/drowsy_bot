@@ -395,7 +395,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const totals = state.getVoiceHourTotals(message.guild.id, targetUser.id);
 
         try {
-            const card = buildHoursCard({ subject, guild: message.guild, totals });
+            const card = await buildHoursCard({ subject, guild: message.guild, totals });
             const attachment = new AttachmentBuilder(card, { name: 'voice-hours.png' });
             await message.reply({ files: [attachment] });
         } catch (error) {
