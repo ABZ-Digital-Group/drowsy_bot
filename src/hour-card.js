@@ -1,5 +1,3 @@
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
-
 const WIDTH = 856;
 const HEIGHT = 464;
 
@@ -103,7 +101,7 @@ function drawInitialsAvatar(ctx, subject) {
     text(ctx, initials, 23, 45, 21, { color: COLORS.text, maxWidth: 38 });
 }
 
-async function drawAvatar(ctx, subject) {
+async function drawAvatar(ctx, subject, loadImage) {
     const avatarUrl = subject.user.displayAvatarURL?.({ extension: 'png', size: 128 }) ?? null;
     if (!avatarUrl) {
         drawInitialsAvatar(ctx, subject);
@@ -200,6 +198,7 @@ function drawChart(ctx, totals) {
 }
 
 async function buildHoursCard({ subject, guild, totals }) {
+    const { createCanvas, loadImage } = require('@napi-rs/canvas');
     const canvas = createCanvas(WIDTH, HEIGHT);
     const ctx = canvas.getContext('2d');
     const displayName = subject.displayName ?? subject.user.globalName ?? subject.user.username;
@@ -211,7 +210,7 @@ async function buildHoursCard({ subject, guild, totals }) {
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
     fillRound(ctx, 0, 0, WIDTH, HEIGHT, 18, 'rgba(255, 255, 255, 0.015)');
-    await drawAvatar(ctx, subject);
+    await drawAvatar(ctx, subject, loadImage);
 
     text(ctx, displayName, 84, 35, 26, { maxWidth: 430 });
     text(ctx, guild.name, 84, 61, 22, { color: COLORS.muted, weight: 500, maxWidth: 390 });
