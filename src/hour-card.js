@@ -18,6 +18,23 @@ const COLORS = {
     shadow: 'rgba(0, 0, 0, 0.28)',
 };
 
+function strokeRound(ctx, x, y, width, height, radius, strokeStyle, lineWidth = 1) {
+    ctx.save();
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = lineWidth;
+    roundedRect(ctx, x, y, width, height, radius);
+    ctx.stroke();
+    ctx.restore();
+}
+
+function fillClippedRound(ctx, x, y, width, height, radius, draw) {
+    ctx.save();
+    roundedRect(ctx, x, y, width, height, radius);
+    ctx.clip();
+    draw();
+    ctx.restore();
+}
+
 function getFontSearchPaths() {
     const rootDir = path.resolve(__dirname, '..');
     const configuredPath = process.env.SATOSHI_FONT_PATH?.trim();
@@ -87,11 +104,35 @@ function fillRound(ctx, x, y, width, height, radius, fillStyle) {
 
 function panel(ctx, x, y, width, height) {
     ctx.save();
-    ctx.shadowColor = COLORS.shadow;
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 4;
-    fillRound(ctx, x, y, width, height, 10, COLORS.panel);
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.34)';
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 8;
+    fillRound(ctx, x, y + 2, width, height, 10, 'rgba(0, 0, 0, 0.18)');
+
+    const gradient = ctx.createLinearGradient(x, y, x, y + height);
+    gradient.addColorStop(0, '#3b414a');
+    gradient.addColorStop(0.4, COLORS.panel);
+    gradient.addColorStop(1, '#262b31');
+    fillRound(ctx, x, y, width, height, 10, gradient);
     ctx.restore();
+
+    fillClippedRound(ctx, x, y, width, height, 10, () => {
+        const topGlow = ctx.createLinearGradient(x, y, x, y + (height * 0.42));
+        topGlow.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        topGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = topGlow;
+        ctx.fillRect(x, y, width, height * 0.42);
+
+        const rimLight = ctx.createLinearGradient(x, y, x, y + height);
+        rimLight.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
+        rimLight.addColorStop(1, 'rgba(0, 0, 0, 0.16)');
+        ctx.fillStyle = rimLight;
+        ctx.fillRect(x + 1, y + 1, 2, height - 2);
+        ctx.fillRect(x + width - 3, y + 1, 2, height - 2);
+    });
+
+    strokeRound(ctx, x + 0.5, y + 0.5, width - 1, height - 1, 9.5, 'rgba(255, 255, 255, 0.08)');
+    strokeRound(ctx, x + 1.5, y + 1.5, width - 3, height - 3, 8.5, 'rgba(0, 0, 0, 0.2)');
 }
 
 function text(ctx, value, x, y, size, options = {}) {
@@ -120,8 +161,18 @@ function text(ctx, value, x, y, size, options = {}) {
 }
 
 function statRow(ctx, x, y, label, value) {
-    fillRound(ctx, x, y, 260, 34, 5, COLORS.panelDark);
-    fillRound(ctx, x, y, 84, 34, 5, COLORS.chip);
+    const rowGradient = ctx.createLinearGradient(x, y, x, y + 34);
+    rowGradient.addColorStop(0, '#2a2f35');
+    rowGradient.addColorStop(1, '#1f2328');
+    fillRound(ctx, x, y, 260, 34, 5, rowGradient);
+
+    const chipGradient = ctx.createLinearGradient(x, y, x, y + 34);
+    chipGradient.addColorStop(0, '#20252a');
+    chipGradient.addColorStop(1, COLORS.chip);
+    fillRound(ctx, x, y, 84, 34, 5, chipGradient);
+
+    strokeRound(ctx, x + 0.5, y + 0.5, 259, 33, 4.5, 'rgba(255, 255, 255, 0.05)');
+    strokeRound(ctx, x + 0.5, y + 0.5, 83, 33, 4.5, 'rgba(255, 255, 255, 0.06)');
     text(ctx, label, x + 17, y + 23, 22, { maxWidth: 66 });
     text(ctx, value, x + 104, y + 22, 20, { color: COLORS.text, weight: 500, maxWidth: 140 });
 }
@@ -160,7 +211,18 @@ async function drawAvatar(ctx, subject, loadImage) {
 }
 
 function dateBox(ctx, x, label, value) {
-    fillRound(ctx, x, 7, 138, 60, 7, COLORS.panel);
+    const gradient = ctx.createLinearGradient(x, 7, x, 67);
+    gradient.addColorStop(0, '#3a4048');
+    gradient.addColorStop(1, '#2a2f35');
+    fillRound(ctx, x, 7, 138, 60, 7, gradient);
+    fillClippedRound(ctx, x, 7, 138, 60, 7, () => {
+        const highlight = ctx.createLinearGradient(x, 7, x, 34);
+        highlight.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        highlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = highlight;
+        ctx.fillRect(x, 7, 138, 27);
+    });
+    strokeRound(ctx, x + 0.5, 7.5, 137, 59, 6.5, 'rgba(255, 255, 255, 0.08)');
     text(ctx, label, x + 12, 29, 16, { color: COLORS.text, maxWidth: 114 });
     text(ctx, value, x + 12, 57, 20, { color: COLORS.muted, weight: 500, maxWidth: 114 });
 }
