@@ -202,7 +202,24 @@ function createState(config) {
                 guildId,
                 userId,
                 counts: normalizedCounts,
+                channels: {},
             };
+
+            const channels = value?.channels && typeof value.channels === 'object' ? value.channels : {};
+            for (const [channelId, channelCounts] of Object.entries(channels)) {
+                if (typeof channelId !== 'string' || !channelCounts || typeof channelCounts !== 'object') continue;
+
+                const normalizedChannelCounts = {};
+                for (const [dateKey, count] of Object.entries(channelCounts)) {
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
+                    if (!Number.isFinite(count) || count <= 0) continue;
+                    normalizedChannelCounts[dateKey] = Math.floor(count);
+                }
+
+                if (Object.keys(normalizedChannelCounts).length > 0) {
+                    entries[getMessageStatsKey(guildId, userId)].channels[channelId] = normalizedChannelCounts;
+                }
+            }
 
             const explicitTotal = Number.isFinite(sourceTotals[key]?.totalMessages) && sourceTotals[key].totalMessages > 0
                 ? Math.floor(sourceTotals[key].totalMessages)
@@ -251,6 +268,20 @@ function createState(config) {
                 for (const dateKey of Object.keys(entry.counts)) {
                     if (dateKey < cutoffKey) {
                         delete entry.counts[dateKey];
+                    }
+                }
+
+                if (entry.channels && typeof entry.channels === 'object') {
+                    for (const [channelId, channelCounts] of Object.entries(entry.channels)) {
+                        for (const dateKey of Object.keys(channelCounts)) {
+                            if (dateKey < cutoffKey) {
+                                delete channelCounts[dateKey];
+                            }
+                        }
+
+                        if (Object.keys(channelCounts).length === 0) {
+                            delete entry.channels[channelId];
+                        }
                     }
                 }
             }
@@ -366,19 +397,26 @@ function createState(config) {
 
             return totals;
         },
-        incrementMessageCount(guildId, userId, timestamp = new Date()) {
+        incrementMessageCount(guildId, userId, channelId = null, timestamp = new Date()) {
             const key = getMessageStatsKey(guildId, userId);
             if (!state.messageStats.entries[key]) {
                 state.messageStats.entries[key] = {
                     guildId,
                     userId,
                     counts: {},
+                    channels: {},
                 };
             }
 
             const dateKey = timestamp.toISOString().slice(0, 10);
             const entry = state.messageStats.entries[key];
             entry.counts[dateKey] = (entry.counts[dateKey] ?? 0) + 1;
+            if (channelId) {
+                if (!entry.channels[channelId]) {
+                    entry.channels[channelId] = {};
+                }
+                entry.channels[channelId][dateKey] = (entry.channels[channelId][dateKey] ?? 0) + 1;
+            }
             if (!state.messageStats.totals[key]) {
                 state.messageStats.totals[key] = {
                     guildId,
@@ -460,6 +498,66 @@ function createState(config) {
             return {
                 voice: getRank(voiceEntries, userId),
                 messages: getRank(messageEntries, userId),
+            };
+        },
+        getTopChannelsSummary(guildId, userId, now = new Date()) {
+            const windowStartMs = now.getTime() - (14 * 24 * 60 * 60 * 1000);
+            const voiceByChannel = new Map();
+            const sessions = [
+                ...state.voiceHours.sessions,
+                ...Object.values(state.voiceHours.active)
+                    .filter(session => session.guildId === guildId && session.userId === userId && session.muted !== true)
+                    .map(session => ({ ...session, endedAt: now.toISOString() })),
+            ];
+
+            for (const session of sessions) {
+                if (session.guildId !== guildId || session.userId !== userId || !session.channelId) continue;
+                const startedAtMs = Date.parse(session.startedAt);
+                const endedAtMs = Date.parse(session.endedAt);
+                if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs)) continue;
+
+                const overlapStartMs = Math.max(startedAtMs, windowStartMs);
+                const overlapEndMs = Math.min(endedAtMs, now.getTime());
+                if (overlapEndMs <= overlapStartMs) continue;
+
+                voiceByChannel.set(
+                    session.channelId,
+                    (voiceByChannel.get(session.channelId) ?? 0) + (overlapEndMs - overlapStartMs)
+                );
+            }
+
+            const messageEntry = state.messageStats.entries[getMessageStatsKey(guildId, userId)];
+            const messageByChannel = new Map();
+            if (messageEntry?.channels) {
+                for (const [channelId, counts] of Object.entries(messageEntry.channels)) {
+                    let total = 0;
+                    for (const [dateKey, count] of Object.entries(counts)) {
+                        const startOfDay = Date.parse(`${dateKey}T00:00:00.000Z`);
+                        if (!Number.isFinite(startOfDay) || !Number.isFinite(count) || count <= 0) continue;
+                        if (startOfDay >= windowStartMs && startOfDay <= now.getTime()) {
+                            total += count;
+                        }
+                    }
+
+                    if (total > 0) {
+                        messageByChannel.set(channelId, total);
+                    }
+                }
+            }
+
+            const topEntry = map => {
+                let best = null;
+                for (const [channelId, total] of map.entries()) {
+                    if (!best || total > best.total || (total === best.total && channelId < best.channelId)) {
+                        best = { channelId, total };
+                    }
+                }
+                return best;
+            };
+
+            return {
+                voice: topEntry(voiceByChannel),
+                messages: topEntry(messageByChannel),
             };
         },
         getAdvertisements() {

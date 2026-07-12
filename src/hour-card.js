@@ -78,6 +78,10 @@ function formatHours(milliseconds) {
     return (milliseconds / 3600000).toFixed(2);
 }
 
+function formatMessageCount(value) {
+    return `${value ?? 0} msgs`;
+}
+
 function formatDate(date) {
     if (!date) return 'Unknown';
 
@@ -275,7 +279,7 @@ function drawVoiceActivity(ctx, totals) {
     statRow(ctx, 584, 198, '14d', `${formatHours(totals[14] ?? 0)} hours`);
 }
 
-function drawTopChannels(ctx, totals) {
+function drawTopChannels(ctx, topActivity) {
     panel(ctx, 12, 256, 408, 162);
     text(ctx, 'Top Channels & Apps', 24, 284, 21);
 
@@ -283,12 +287,16 @@ function drawTopChannels(ctx, totals) {
     fillRound(ctx, 64, 336, 346, 34, 5, COLORS.panelDark);
     fillRound(ctx, 64, 378, 346, 34, 5, COLORS.panelDark);
 
-    text(ctx, '#', 26, 320, 24);
-    text(ctx, '#voice', 84, 319, 23);
-    text(ctx, `${formatHours(totals[14] ?? 0)} hours`, 248, 319, 20, { color: COLORS.text, weight: 500 });
+    text(ctx, 'VC', 24, 320, 22);
+    text(ctx, topActivity?.voice?.name ?? 'No voice data', 84, 319, 23, { maxWidth: 150 });
+    text(ctx, `${formatHours(topActivity?.voice?.total ?? 0)} hours`, 244, 319, 20, { color: COLORS.text, weight: 500, maxWidth: 150 });
 
-    text(ctx, 'Voice', 84, 361, 23);
-    text(ctx, `${formatHours(totals[7] ?? 0)} hours`, 248, 361, 20, { color: COLORS.text, weight: 500 });
+    text(ctx, 'MSG', 20, 361, 20);
+    text(ctx, topActivity?.messages?.name ?? 'No message data', 84, 361, 23, { maxWidth: 150 });
+    text(ctx, formatMessageCount(topActivity?.messages?.total ?? 0), 244, 361, 20, { color: COLORS.text, weight: 500, maxWidth: 150 });
+
+    text(ctx, '14d leaders', 84, 404, 19, { color: COLORS.muted, weight: 600, maxWidth: 150 });
+    text(ctx, 'Voice + Messages', 244, 404, 18, { color: COLORS.muted, weight: 500, maxWidth: 150 });
 }
 
 function drawChart(ctx, voiceTotals, messageTotals) {
@@ -332,7 +340,7 @@ function drawChart(ctx, voiceTotals, messageTotals) {
     });
 }
 
-async function buildHoursCard({ subject, guild, totals, messageTotals = {}, ranks = {} }) {
+async function buildHoursCard({ subject, guild, totals, messageTotals = {}, ranks = {}, topActivity = {} }) {
     const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
     registerSatoshiFont(GlobalFonts);
 
@@ -367,7 +375,7 @@ async function buildHoursCard({ subject, guild, totals, messageTotals = {}, rank
     drawRanks(ctx, ranks);
     drawMessages(ctx, messageTotals);
     drawVoiceActivity(ctx, totals);
-    drawTopChannels(ctx, totals);
+    drawTopChannels(ctx, topActivity);
     drawChart(ctx, totals, messageTotals);
 
     text(ctx, 'Server Lookback: Last 14 days - Timezone: UTC', 14, 450, 17, { color: COLORS.text });

@@ -64,6 +64,16 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         return `#${rankInfo.rank} of ${rankInfo.totalUsers}`;
     }
 
+    async function resolveChannelLabel(guild, channelId, fallback) {
+        if (!channelId) return fallback;
+
+        const channel = guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId).catch(() => null);
+        if (!channel) return fallback;
+        return channel.type === ChannelType.GuildVoice || channel.type === ChannelType.GuildStageVoice
+            ? channel.name
+            : `#${channel.name}`;
+    }
+
     function isCountedVoiceState(voiceState) {
         return Boolean(voiceState?.channelId)
             && voiceState.selfMute !== true
@@ -448,6 +458,17 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const voiceTotals = state.getVoiceHourTotals(message.guild.id, targetUser.id);
         const messageTotals = state.getMessageTotals(message.guild.id, targetUser.id);
         const ranks = state.getOverallRanks(message.guild.id, targetUser.id);
+        const topChannels = state.getTopChannelsSummary(message.guild.id, targetUser.id);
+        const topActivity = {
+            voice: {
+                name: await resolveChannelLabel(message.guild, topChannels.voice?.channelId, 'No voice data'),
+                total: topChannels.voice?.total ?? 0,
+            },
+            messages: {
+                name: await resolveChannelLabel(message.guild, topChannels.messages?.channelId, 'No message data'),
+                total: topChannels.messages?.total ?? 0,
+            },
+        };
 
         if (hoursCardRenderingDisabled) {
             await message.reply({ embeds: [buildHoursEmbed(subject, voiceTotals, messageTotals, ranks, message.guild)] });
@@ -455,7 +476,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         }
 
         try {
-            const card = await buildHoursCard({ subject, guild: message.guild, totals: voiceTotals, messageTotals, ranks });
+            const card = await buildHoursCard({ subject, guild: message.guild, totals: voiceTotals, messageTotals, ranks, topActivity });
             const attachment = new AttachmentBuilder(card, { name: 'voice-hours.png' });
             await message.reply({ files: [attachment] });
         } catch (error) {
@@ -475,7 +496,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         if (message.author.bot) return;
 
         if (message.guild) {
-            state.incrementMessageCount(message.guild.id, message.author.id, message.createdAt ?? new Date());
+            state.incrementMessageCount(message.guild.id, message.author.id, message.channelId, message.createdAt ?? new Date());
         }
 
         if (message.guild && /^-h(?:\s|$)/i.test(message.content.trim())) {
