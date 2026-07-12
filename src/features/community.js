@@ -384,8 +384,23 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         }
     }
 
+    async function resolveHoursTarget(message) {
+        const trimmedContent = message.content.trim();
+        const targetUser = message.mentions.users.first();
+        if (targetUser) return targetUser;
+
+        const match = trimmedContent.match(/^-h\s+(\d{17,20})(?:\s|$)/i);
+        if (!match) return message.author;
+
+        const userId = match[1];
+        const member = await message.guild.members.fetch(userId).catch(() => null);
+        if (member) return member.user;
+
+        return await message.client.users.fetch(userId).catch(() => message.author);
+    }
+
     async function sendHoursGui(message) {
-        const targetUser = message.mentions.users.first() ?? message.author;
+        const targetUser = await resolveHoursTarget(message);
         const member = await message.guild.members.fetch(targetUser.id).catch(() => null);
         const subject = member ?? {
             user: targetUser,

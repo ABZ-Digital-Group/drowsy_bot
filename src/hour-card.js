@@ -1,5 +1,10 @@
+const fs = require('fs');
+const path = require('path');
+
 const WIDTH = 856;
 const HEIGHT = 464;
+const FONT_FAMILY = '"Satoshi", "Segoe UI", Arial, sans-serif';
+let satoshiRegistered = false;
 
 const COLORS = {
     page: '#24282f',
@@ -12,6 +17,40 @@ const COLORS = {
     pink: '#d7528a',
     shadow: 'rgba(0, 0, 0, 0.28)',
 };
+
+function getFontSearchPaths() {
+    const rootDir = path.resolve(__dirname, '..');
+    const configuredPath = process.env.SATOSHI_FONT_PATH?.trim();
+    const candidates = [
+        configuredPath,
+        path.join(rootDir, 'assets', 'fonts', 'Satoshi-Regular.ttf'),
+        path.join(rootDir, 'assets', 'fonts', 'Satoshi-Regular.otf'),
+        path.join(rootDir, 'assets', 'fonts', 'Satoshi-Medium.ttf'),
+        path.join(rootDir, 'assets', 'fonts', 'Satoshi-Medium.otf'),
+        path.join(rootDir, 'assets', 'fonts', 'Satoshi-Bold.ttf'),
+        path.join(rootDir, 'assets', 'fonts', 'Satoshi-Bold.otf'),
+        path.join(rootDir, 'assests', 'fonts', 'Satoshi-Regular.ttf'),
+        path.join(rootDir, 'assests', 'fonts', 'Satoshi-Regular.otf'),
+        path.join(rootDir, 'assests', 'fonts', 'Satoshi-Medium.ttf'),
+        path.join(rootDir, 'assests', 'fonts', 'Satoshi-Medium.otf'),
+        path.join(rootDir, 'assests', 'fonts', 'Satoshi-Bold.ttf'),
+        path.join(rootDir, 'assests', 'fonts', 'Satoshi-Bold.otf'),
+    ];
+
+    return candidates.filter(Boolean);
+}
+
+function registerSatoshiFont(GlobalFonts) {
+    if (satoshiRegistered || !GlobalFonts?.registerFromPath) return;
+
+    let registeredAny = false;
+    for (const fontPath of getFontSearchPaths()) {
+        if (!fs.existsSync(fontPath)) continue;
+        registeredAny = GlobalFonts.registerFromPath(fontPath, 'Satoshi') || registeredAny;
+    }
+
+    satoshiRegistered = registeredAny;
+}
 
 function formatHours(milliseconds) {
     return (milliseconds / 3600000).toFixed(2);
@@ -58,7 +97,7 @@ function panel(ctx, x, y, width, height) {
 function text(ctx, value, x, y, size, options = {}) {
     ctx.save();
     ctx.fillStyle = options.color ?? COLORS.text;
-    ctx.font = `${options.weight ?? 700} ${size}px "Segoe UI", Arial, sans-serif`;
+    ctx.font = `${options.weight ?? 700} ${size}px ${FONT_FAMILY}`;
     ctx.textBaseline = options.baseline ?? 'alphabetic';
 
     if (options.maxWidth) {
@@ -198,7 +237,9 @@ function drawChart(ctx, totals) {
 }
 
 async function buildHoursCard({ subject, guild, totals }) {
-    const { createCanvas, loadImage } = require('@napi-rs/canvas');
+    const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
+    registerSatoshiFont(GlobalFonts);
+
     const canvas = createCanvas(WIDTH, HEIGHT);
     const ctx = canvas.getContext('2d');
     const displayName = subject.displayName ?? subject.user.globalName ?? subject.user.username;
