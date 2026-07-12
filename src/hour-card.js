@@ -7,15 +7,19 @@ const FONT_FAMILY = '"Satoshi", "Segoe UI", Arial, sans-serif';
 let satoshiRegistered = false;
 
 const COLORS = {
-    page: '#24282f',
-    panel: '#2f343b',
-    panelDark: '#22262b',
-    chip: '#171b1f',
-    text: '#d8dbe0',
-    muted: '#aeb4bd',
-    green: '#43c767',
-    pink: '#d7528a',
-    shadow: 'rgba(0, 0, 0, 0.28)',
+    page: '#e7ecff',
+    panel: '#dfe6ff',
+    panelDark: '#cfd8ff',
+    chip: '#bfcdfd',
+    text: '#233056',
+    muted: '#586a99',
+    green: '#19c7a3',
+    pink: '#ff5fa2',
+    cyan: '#4dc8ff',
+    violet: '#7b61ff',
+    shadow: 'rgba(102, 126, 234, 0.22)',
+    shadowSoft: 'rgba(115, 136, 214, 0.16)',
+    highlight: 'rgba(255, 255, 255, 0.92)',
 };
 
 function strokeRound(ctx, x, y, width, height, radius, strokeStyle, lineWidth = 1) {
@@ -104,35 +108,44 @@ function fillRound(ctx, x, y, width, height, radius, fillStyle) {
 
 function panel(ctx, x, y, width, height) {
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.34)';
+    ctx.shadowColor = COLORS.highlight;
     ctx.shadowBlur = 16;
-    ctx.shadowOffsetY = 8;
-    fillRound(ctx, x, y + 2, width, height, 10, 'rgba(0, 0, 0, 0.18)');
-
-    const gradient = ctx.createLinearGradient(x, y, x, y + height);
-    gradient.addColorStop(0, '#3b414a');
-    gradient.addColorStop(0.4, COLORS.panel);
-    gradient.addColorStop(1, '#262b31');
-    fillRound(ctx, x, y, width, height, 10, gradient);
+    ctx.shadowOffsetX = -8;
+    ctx.shadowOffsetY = -8;
+    fillRound(ctx, x, y, width, height, 12, COLORS.panel);
     ctx.restore();
 
-    fillClippedRound(ctx, x, y, width, height, 10, () => {
-        const topGlow = ctx.createLinearGradient(x, y, x, y + (height * 0.42));
-        topGlow.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
-        topGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        ctx.fillStyle = topGlow;
-        ctx.fillRect(x, y, width, height * 0.42);
+    ctx.save();
+    ctx.shadowColor = COLORS.shadow;
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetX = 10;
+    ctx.shadowOffsetY = 10;
+    fillRound(ctx, x, y, width, height, 12, COLORS.panel);
+    ctx.restore();
 
-        const rimLight = ctx.createLinearGradient(x, y, x, y + height);
-        rimLight.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
-        rimLight.addColorStop(1, 'rgba(0, 0, 0, 0.16)');
-        ctx.fillStyle = rimLight;
-        ctx.fillRect(x + 1, y + 1, 2, height - 2);
-        ctx.fillRect(x + width - 3, y + 1, 2, height - 2);
+    const gradient = ctx.createLinearGradient(x, y, x, y + height);
+    gradient.addColorStop(0, '#edf2ff');
+    gradient.addColorStop(0.45, COLORS.panel);
+    gradient.addColorStop(1, '#d6deff');
+    fillRound(ctx, x, y, width, height, 12, gradient);
+
+    fillClippedRound(ctx, x, y, width, height, 12, () => {
+        const glow = ctx.createRadialGradient(x + (width * 0.2), y + (height * 0.12), 0, x + (width * 0.2), y + (height * 0.12), width * 0.85);
+        glow.addColorStop(0, 'rgba(123, 97, 255, 0.18)');
+        glow.addColorStop(0.55, 'rgba(77, 200, 255, 0.09)');
+        glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(x, y, width, height);
+
+        const topSheen = ctx.createLinearGradient(x, y, x, y + (height * 0.5));
+        topSheen.addColorStop(0, 'rgba(255, 255, 255, 0.42)');
+        topSheen.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = topSheen;
+        ctx.fillRect(x, y, width, height * 0.5);
     });
 
-    strokeRound(ctx, x + 0.5, y + 0.5, width - 1, height - 1, 9.5, 'rgba(255, 255, 255, 0.08)');
-    strokeRound(ctx, x + 1.5, y + 1.5, width - 3, height - 3, 8.5, 'rgba(0, 0, 0, 0.2)');
+    strokeRound(ctx, x + 0.5, y + 0.5, width - 1, height - 1, 11.5, 'rgba(255, 255, 255, 0.55)');
+    strokeRound(ctx, x + 1.5, y + 1.5, width - 3, height - 3, 10.5, 'rgba(112, 132, 214, 0.12)');
 }
 
 function text(ctx, value, x, y, size, options = {}) {
@@ -162,17 +175,17 @@ function text(ctx, value, x, y, size, options = {}) {
 
 function statRow(ctx, x, y, label, value) {
     const rowGradient = ctx.createLinearGradient(x, y, x, y + 34);
-    rowGradient.addColorStop(0, '#2a2f35');
-    rowGradient.addColorStop(1, '#1f2328');
+    rowGradient.addColorStop(0, '#ecf1ff');
+    rowGradient.addColorStop(1, '#d6defe');
     fillRound(ctx, x, y, 260, 34, 5, rowGradient);
 
     const chipGradient = ctx.createLinearGradient(x, y, x, y + 34);
-    chipGradient.addColorStop(0, '#20252a');
-    chipGradient.addColorStop(1, COLORS.chip);
+    chipGradient.addColorStop(0, '#8c7dff');
+    chipGradient.addColorStop(1, '#47c7ff');
     fillRound(ctx, x, y, 84, 34, 5, chipGradient);
 
-    strokeRound(ctx, x + 0.5, y + 0.5, 259, 33, 4.5, 'rgba(255, 255, 255, 0.05)');
-    strokeRound(ctx, x + 0.5, y + 0.5, 83, 33, 4.5, 'rgba(255, 255, 255, 0.06)');
+    strokeRound(ctx, x + 0.5, y + 0.5, 259, 33, 4.5, 'rgba(255, 255, 255, 0.6)');
+    strokeRound(ctx, x + 0.5, y + 0.5, 83, 33, 4.5, 'rgba(255, 255, 255, 0.4)');
     text(ctx, label, x + 17, y + 23, 22, { maxWidth: 66 });
     text(ctx, value, x + 104, y + 22, 20, { color: COLORS.text, weight: 500, maxWidth: 140 });
 }
@@ -187,7 +200,10 @@ function drawInitialsAvatar(ctx, subject) {
         .join('')
         .toUpperCase() || '?';
 
-    fillRound(ctx, 12, 8, 58, 58, 14, '#11151a');
+    const avatarGradient = ctx.createLinearGradient(12, 8, 70, 66);
+    avatarGradient.addColorStop(0, '#7a67ff');
+    avatarGradient.addColorStop(1, '#36d4ff');
+    fillRound(ctx, 12, 8, 58, 58, 14, avatarGradient);
     text(ctx, initials, 23, 45, 21, { color: COLORS.text, maxWidth: 38 });
 }
 
@@ -212,17 +228,17 @@ async function drawAvatar(ctx, subject, loadImage) {
 
 function dateBox(ctx, x, label, value) {
     const gradient = ctx.createLinearGradient(x, 7, x, 67);
-    gradient.addColorStop(0, '#3a4048');
-    gradient.addColorStop(1, '#2a2f35');
+    gradient.addColorStop(0, '#f2f5ff');
+    gradient.addColorStop(1, '#d5ddff');
     fillRound(ctx, x, 7, 138, 60, 7, gradient);
     fillClippedRound(ctx, x, 7, 138, 60, 7, () => {
         const highlight = ctx.createLinearGradient(x, 7, x, 34);
-        highlight.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        highlight.addColorStop(0, 'rgba(255, 255, 255, 0.52)');
         highlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = highlight;
         ctx.fillRect(x, 7, 138, 27);
     });
-    strokeRound(ctx, x + 0.5, 7.5, 137, 59, 6.5, 'rgba(255, 255, 255, 0.08)');
+    strokeRound(ctx, x + 0.5, 7.5, 137, 59, 6.5, 'rgba(255, 255, 255, 0.58)');
     text(ctx, label, x + 12, 29, 16, { color: COLORS.text, maxWidth: 114 });
     text(ctx, value, x + 12, 57, 20, { color: COLORS.muted, weight: 500, maxWidth: 114 });
 }
@@ -291,8 +307,8 @@ function drawChart(ctx, totals) {
         const x = 470 + (index * 105);
         const height = Math.max(4, Math.round((value / max) * 78));
         const gradient = ctx.createLinearGradient(x, baseY - height, x, baseY);
-        gradient.addColorStop(0, index === 2 ? '#45d36a' : '#e65a97');
-        gradient.addColorStop(1, index === 2 ? '#31a953' : '#ba3f75');
+        gradient.addColorStop(0, index === 2 ? '#20d9b1' : '#8d68ff');
+        gradient.addColorStop(1, index === 2 ? '#00b7d6' : '#ff5f9e');
         fillRound(ctx, x, baseY - height, 54, height, 7, gradient);
         text(ctx, labels[index], x + 15, 413, 18, { color: COLORS.muted });
     });
@@ -307,12 +323,20 @@ async function buildHoursCard({ subject, guild, totals }) {
     const displayName = subject.displayName ?? subject.user.globalName ?? subject.user.username;
 
     const background = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
-    background.addColorStop(0, '#262b32');
-    background.addColorStop(1, '#20242a');
+    background.addColorStop(0, '#eef3ff');
+    background.addColorStop(0.45, '#dde6ff');
+    background.addColorStop(1, '#cfdcff');
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    fillRound(ctx, 0, 0, WIDTH, HEIGHT, 18, 'rgba(255, 255, 255, 0.015)');
+    const aura = ctx.createRadialGradient(120, 80, 0, 120, 80, 420);
+    aura.addColorStop(0, 'rgba(123, 97, 255, 0.18)');
+    aura.addColorStop(0.55, 'rgba(77, 200, 255, 0.12)');
+    aura.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = aura;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    fillRound(ctx, 0, 0, WIDTH, HEIGHT, 18, 'rgba(255, 255, 255, 0.08)');
     await drawAvatar(ctx, subject, loadImage);
 
     text(ctx, displayName, 84, 35, 26, { maxWidth: 430 });
