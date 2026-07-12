@@ -247,11 +247,16 @@ function dateBox(ctx, x, label, value) {
     text(ctx, value, x + 12, 57, 20, { color: COLORS.muted, weight: 500, maxWidth: 114 });
 }
 
-function drawRanks(ctx) {
+function formatRank(rankInfo) {
+    if (!rankInfo?.rank) return 'Unranked';
+    return `#${rankInfo.rank}`;
+}
+
+function drawRanks(ctx, ranks) {
     panel(ctx, 12, 80, 268, 162);
     text(ctx, 'Server Ranks', 22, 105, 22);
-    statRow(ctx, 21, 122, 'Voice', '#--');
-    statRow(ctx, 21, 184, 'Hours', '#--');
+    statRow(ctx, 21, 122, 'Voice', formatRank(ranks?.voice));
+    statRow(ctx, 21, 184, 'Msgs', formatRank(ranks?.messages));
 }
 
 function drawMessages(ctx, totals) {
@@ -327,7 +332,7 @@ function drawChart(ctx, voiceTotals, messageTotals) {
     });
 }
 
-async function buildHoursCard({ subject, guild, totals, messageTotals = {} }) {
+async function buildHoursCard({ subject, guild, totals, messageTotals = {}, ranks = {} }) {
     const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
     registerSatoshiFont(GlobalFonts);
 
@@ -359,7 +364,7 @@ async function buildHoursCard({ subject, guild, totals, messageTotals = {} }) {
     dateBox(ctx, 546, 'Created On', formatDate(subject.user.createdAt));
     dateBox(ctx, 704, 'Joined On', formatDate(subject.joinedAt));
 
-    drawRanks(ctx);
+    drawRanks(ctx, ranks);
     drawMessages(ctx, messageTotals);
     drawVoiceActivity(ctx, totals);
     drawTopChannels(ctx, totals);

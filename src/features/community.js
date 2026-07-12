@@ -59,13 +59,18 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             .join('\n');
     }
 
+    function formatRankValue(rankInfo) {
+        if (!rankInfo?.rank || !rankInfo?.totalUsers) return 'Unranked';
+        return `#${rankInfo.rank} of ${rankInfo.totalUsers}`;
+    }
+
     function isCountedVoiceState(voiceState) {
         return Boolean(voiceState?.channelId)
             && voiceState.selfMute !== true
             && voiceState.serverMute !== true;
     }
 
-    function buildHoursEmbed(subject, voiceTotals, messageTotals, guild) {
+    function buildHoursEmbed(subject, voiceTotals, messageTotals, ranks, guild) {
         const displayName = subject.displayName ?? subject.user.globalName ?? subject.user.username;
         const joinedAt = subject.joinedAt ?? null;
 
@@ -85,6 +90,16 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 {
                     name: 'Joined On',
                     value: formatProfileDate(joinedAt),
+                    inline: true,
+                },
+                {
+                    name: 'Voice Rank',
+                    value: formatRankValue(ranks.voice),
+                    inline: true,
+                },
+                {
+                    name: 'Message Rank',
+                    value: formatRankValue(ranks.messages),
                     inline: true,
                 },
                 {
@@ -432,14 +447,15 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         };
         const voiceTotals = state.getVoiceHourTotals(message.guild.id, targetUser.id);
         const messageTotals = state.getMessageTotals(message.guild.id, targetUser.id);
+        const ranks = state.getOverallRanks(message.guild.id, targetUser.id);
 
         if (hoursCardRenderingDisabled) {
-            await message.reply({ embeds: [buildHoursEmbed(subject, voiceTotals, messageTotals, message.guild)] });
+            await message.reply({ embeds: [buildHoursEmbed(subject, voiceTotals, messageTotals, ranks, message.guild)] });
             return;
         }
 
         try {
-            const card = await buildHoursCard({ subject, guild: message.guild, totals: voiceTotals, messageTotals });
+            const card = await buildHoursCard({ subject, guild: message.guild, totals: voiceTotals, messageTotals, ranks });
             const attachment = new AttachmentBuilder(card, { name: 'voice-hours.png' });
             await message.reply({ files: [attachment] });
         } catch (error) {
@@ -451,7 +467,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 console.error('Failed to render hours card:', error);
             }
 
-            await message.reply({ embeds: [buildHoursEmbed(subject, voiceTotals, messageTotals, message.guild)] });
+            await message.reply({ embeds: [buildHoursEmbed(subject, voiceTotals, messageTotals, ranks, message.guild)] });
         }
     }
 

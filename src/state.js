@@ -30,6 +30,7 @@ function createState(config) {
         fs.writeFileSync(config.FILES.voiceHours, JSON.stringify({
             sessions: [],
             active: {},
+            totals: {},
         }, null, 2));
     }
 
@@ -101,6 +102,7 @@ function createState(config) {
         const parsed = readJsonFile(config.FILES.voiceHours, {
             sessions: [],
             active: {},
+            totals: {},
         });
         const sessions = Array.isArray(parsed?.sessions)
             ? parsed.sessions
@@ -132,7 +134,42 @@ function createState(config) {
             }
         }
 
-        return { sessions, active };
+        const totals = {};
+        if (parsed?.totals && typeof parsed.totals === 'object') {
+            for (const [key, value] of Object.entries(parsed.totals)) {
+                const guildId = typeof value?.guildId === 'string' ? value.guildId : key.split(':')[0];
+                const userId = typeof value?.userId === 'string' ? value.userId : key.split(':')[1];
+                const totalMilliseconds = Number.isFinite(value?.totalMilliseconds) && value.totalMilliseconds > 0
+                    ? Math.floor(value.totalMilliseconds)
+                    : 0;
+                if (!guildId || !userId) continue;
+
+                totals[getVoiceHoursKey(guildId, userId)] = {
+                    guildId,
+                    userId,
+                    totalMilliseconds,
+                };
+            }
+        }
+
+        for (const session of sessions) {
+            const key = getVoiceHoursKey(session.guildId, session.userId);
+            if (totals[key]) continue;
+
+            const startedAtMs = Date.parse(session.startedAt);
+            const endedAtMs = Date.parse(session.endedAt);
+            const duration = Number.isFinite(startedAtMs) && Number.isFinite(endedAtMs) && endedAtMs > startedAtMs
+                ? endedAtMs - startedAtMs
+                : 0;
+
+            totals[key] = {
+                guildId: session.guildId,
+                userId: session.userId,
+                totalMilliseconds: duration,
+            };
+        }
+
+        return { sessions, active, totals };
     }
 
     function loadMessageStatsState() {
@@ -142,8 +179,12 @@ function createState(config) {
             : parsed && typeof parsed === 'object'
                 ? parsed
                 : {};
+        const sourceTotals = parsed?.totals && typeof parsed.totals === 'object'
+            ? parsed.totals
+            : {};
 
         const entries = {};
+        const totals = {};
         for (const [key, value] of Object.entries(sourceEntries)) {
             const guildId = typeof value?.guildId === 'string' ? value.guildId : key.split(':')[0];
             const userId = typeof value?.userId === 'string' ? value.userId : key.split(':')[1];
@@ -162,9 +203,20 @@ function createState(config) {
                 userId,
                 counts: normalizedCounts,
             };
+
+            const explicitTotal = Number.isFinite(sourceTotals[key]?.totalMessages) && sourceTotals[key].totalMessages > 0
+                ? Math.floor(sourceTotals[key].totalMessages)
+                : Number.isFinite(value?.totalMessages) && value.totalMessages > 0
+                    ? Math.floor(value.totalMessages)
+                    : null;
+            totals[getMessageStatsKey(guildId, userId)] = {
+                guildId,
+                userId,
+                totalMessages: explicitTotal ?? Object.values(normalizedCounts).reduce((sum, count) => sum + count, 0),
+            };
         }
 
-        return { entries };
+        return { entries, totals };
     }
 
     const guildConfigs = readJsonFile(config.FILES.guildConfig, {});
@@ -266,6 +318,15 @@ function createState(config) {
                     ...activeSession,
                     endedAt: endedAt.toISOString(),
                 };
+                const totalKey = getVoiceHoursKey(guildId, userId);
+                if (!state.voiceHours.totals[totalKey]) {
+                    state.voiceHours.totals[totalKey] = {
+                        guildId,
+                        userId,
+                        totalMilliseconds: 0,
+                    };
+                }
+                state.voiceHours.totals[totalKey].totalMilliseconds += endedAtMs - startedAtMs;
                 state.voiceHours.sessions.push(completedSession);
                 state.pruneVoiceHourSessions(endedAt);
                 state.saveVoiceHours();
@@ -318,6 +379,14 @@ function createState(config) {
             const dateKey = timestamp.toISOString().slice(0, 10);
             const entry = state.messageStats.entries[key];
             entry.counts[dateKey] = (entry.counts[dateKey] ?? 0) + 1;
+            if (!state.messageStats.totals[key]) {
+                state.messageStats.totals[key] = {
+                    guildId,
+                    userId,
+                    totalMessages: 0,
+                };
+            }
+            state.messageStats.totals[key].totalMessages += 1;
             state.pruneMessageStats(timestamp);
             state.saveMessageStats();
             return entry.counts[dateKey];
@@ -341,6 +410,57 @@ function createState(config) {
             }
 
             return totals;
+        },
+        getOverallVoiceTotal(guildId, userId, now = new Date()) {
+            const key = getVoiceHoursKey(guildId, userId);
+            const storedTotal = state.voiceHours.totals[key]?.totalMilliseconds ?? 0;
+            const activeSession = state.voiceHours.active[key];
+            if (!activeSession || activeSession.muted === true) return storedTotal;
+
+            const startedAtMs = Date.parse(activeSession.startedAt);
+            const nowMs = now.getTime();
+            if (!Number.isFinite(startedAtMs) || nowMs <= startedAtMs) return storedTotal;
+            return storedTotal + (nowMs - startedAtMs);
+        },
+        getOverallMessageTotal(guildId, userId) {
+            return state.messageStats.totals[getMessageStatsKey(guildId, userId)]?.totalMessages ?? 0;
+        },
+        getOverallRanks(guildId, userId, now = new Date()) {
+            const voiceEntries = [];
+            const seenVoiceUsers = new Set();
+
+            for (const entry of Object.values(state.voiceHours.totals)) {
+                if (entry.guildId !== guildId) continue;
+                seenVoiceUsers.add(entry.userId);
+                voiceEntries.push({ userId: entry.userId, total: state.getOverallVoiceTotal(guildId, entry.userId, now) });
+            }
+
+            for (const session of Object.values(state.voiceHours.active)) {
+                if (session.guildId !== guildId || seenVoiceUsers.has(session.userId)) continue;
+                voiceEntries.push({ userId: session.userId, total: state.getOverallVoiceTotal(guildId, session.userId, now) });
+            }
+
+            const messageEntries = [];
+            for (const entry of Object.values(state.messageStats.totals)) {
+                if (entry.guildId !== guildId) continue;
+                messageEntries.push({ userId: entry.userId, total: entry.totalMessages ?? 0 });
+            }
+
+            const getRank = (entries, targetId) => {
+                const ranked = entries
+                    .filter(entry => entry.total > 0)
+                    .sort((left, right) => right.total - left.total || left.userId.localeCompare(right.userId));
+                const index = ranked.findIndex(entry => entry.userId === targetId);
+                return {
+                    rank: index >= 0 ? index + 1 : null,
+                    totalUsers: ranked.length,
+                };
+            };
+
+            return {
+                voice: getRank(voiceEntries, userId),
+                messages: getRank(messageEntries, userId),
+            };
         },
         getAdvertisements() {
             return state.advertisements.items;
