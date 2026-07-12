@@ -49,7 +49,23 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             .join('\n');
     }
 
-    function buildHoursEmbed(subject, totals, guild) {
+    function buildMessageRows(totals) {
+        return hourWindows
+            .map(days => {
+                const label = `${days}d`.padEnd(3, ' ');
+                const messages = String(totals[days] ?? 0).padStart(6, ' ');
+                return `${label} ${messages} msgs`;
+            })
+            .join('\n');
+    }
+
+    function isCountedVoiceState(voiceState) {
+        return Boolean(voiceState?.channelId)
+            && voiceState.selfMute !== true
+            && voiceState.serverMute !== true;
+    }
+
+    function buildHoursEmbed(subject, voiceTotals, messageTotals, guild) {
         const displayName = subject.displayName ?? subject.user.globalName ?? subject.user.username;
         const joinedAt = subject.joinedAt ?? null;
 
@@ -73,7 +89,12 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 },
                 {
                     name: 'Voice Activity',
-                    value: `\`\`\`txt\n${buildVoiceActivityRows(totals)}\n\`\`\``,
+                    value: `\`\`\`txt\n${buildVoiceActivityRows(voiceTotals)}\n\`\`\``,
+                    inline: false,
+                },
+                {
+                    name: 'Messages',
+                    value: `\`\`\`txt\n${buildMessageRows(messageTotals)}\n\`\`\``,
                     inline: false,
                 }
             )
@@ -370,9 +391,10 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
                 for (const member of channel.members.values()) {
                     if (member.user.bot) continue;
+                    if (!isCountedVoiceState(member.voice)) continue;
 
                     activeKeys.add(`${guild.id}:${member.id}`);
-                    state.startVoiceHourSession(guild.id, member.id, channel.id, now);
+                    state.startVoiceHourSession(guild.id, member.id, channel.id, now, false);
                 }
             }
         }
@@ -408,15 +430,16 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             joinedAt: null,
             toString: () => `<@${targetUser.id}>`,
         };
-        const totals = state.getVoiceHourTotals(message.guild.id, targetUser.id);
+        const voiceTotals = state.getVoiceHourTotals(message.guild.id, targetUser.id);
+        const messageTotals = state.getMessageTotals(message.guild.id, targetUser.id);
 
         if (hoursCardRenderingDisabled) {
-            await message.reply({ embeds: [buildHoursEmbed(subject, totals, message.guild)] });
+            await message.reply({ embeds: [buildHoursEmbed(subject, voiceTotals, messageTotals, message.guild)] });
             return;
         }
 
         try {
-            const card = await buildHoursCard({ subject, guild: message.guild, totals });
+            const card = await buildHoursCard({ subject, guild: message.guild, totals: voiceTotals, messageTotals });
             const attachment = new AttachmentBuilder(card, { name: 'voice-hours.png' });
             await message.reply({ files: [attachment] });
         } catch (error) {
@@ -428,12 +451,16 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 console.error('Failed to render hours card:', error);
             }
 
-            await message.reply({ embeds: [buildHoursEmbed(subject, totals, message.guild)] });
+            await message.reply({ embeds: [buildHoursEmbed(subject, voiceTotals, messageTotals, message.guild)] });
         }
     }
 
     async function handleMessageCreate(message) {
         if (message.author.bot) return;
+
+        if (message.guild) {
+            state.incrementMessageCount(message.guild.id, message.author.id, message.createdAt ?? new Date());
+        }
 
         if (message.guild && /^-h(?:\s|$)/i.test(message.content.trim())) {
             await sendHoursGui(message);
@@ -821,19 +848,43 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
         const oldChannelId = oldState.channelId;
         const newChannelId = newState.channelId;
-        if (oldChannelId === newChannelId) return;
+        const wasCounted = isCountedVoiceState(oldState);
+        const isCounted = isCountedVoiceState(newState);
+
+        if (oldChannelId === newChannelId) {
+            if (oldChannelId && wasCounted !== isCounted) {
+                state.updateVoiceHourSessionMute(guild.id, member.id, !isCounted, new Date());
+            }
+            return;
+        }
 
         if (!oldChannelId && newChannelId) {
-            state.startVoiceHourSession(guild.id, member.id, newChannelId);
+            if (isCounted) {
+                state.startVoiceHourSession(guild.id, member.id, newChannelId, new Date(), false);
+            }
             return;
         }
 
         if (oldChannelId && !newChannelId) {
+            if (wasCounted) {
+                state.endVoiceHourSession(guild.id, member.id);
+            }
+            return;
+        }
+
+        if (wasCounted && isCounted) {
+            state.moveVoiceHourSession(guild.id, member.id, newChannelId, new Date(), false);
+            return;
+        }
+
+        if (wasCounted) {
             state.endVoiceHourSession(guild.id, member.id);
             return;
         }
 
-        state.moveVoiceHourSession(guild.id, member.id, newChannelId);
+        if (isCounted) {
+            state.startVoiceHourSession(guild.id, member.id, newChannelId, new Date(), false);
+        }
     }
 
     return {

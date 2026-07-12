@@ -33,6 +33,12 @@ function createState(config) {
         }, null, 2));
     }
 
+    if (!fs.existsSync(config.FILES.messageStats)) {
+        fs.writeFileSync(config.FILES.messageStats, JSON.stringify({
+            entries: {},
+        }, null, 2));
+    }
+
     function readJsonFile(filePath, fallbackValue) {
         if (!fs.existsSync(filePath)) return fallbackValue;
 
@@ -82,6 +88,10 @@ function createState(config) {
         return `${guildId}:${userId}`;
     }
 
+    function getMessageStatsKey(guildId, userId) {
+        return `${guildId}:${userId}`;
+    }
+
     function normalizeIsoDate(value) {
         const timestamp = Date.parse(value ?? '');
         return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
@@ -117,6 +127,7 @@ function createState(config) {
                     userId,
                     channelId: typeof session?.channelId === 'string' ? session.channelId : null,
                     startedAt,
+                    muted: session?.muted === true,
                 };
             }
         }
@@ -124,14 +135,48 @@ function createState(config) {
         return { sessions, active };
     }
 
+    function loadMessageStatsState() {
+        const parsed = readJsonFile(config.FILES.messageStats, { entries: {} });
+        const sourceEntries = parsed && typeof parsed.entries === 'object' && parsed.entries
+            ? parsed.entries
+            : parsed && typeof parsed === 'object'
+                ? parsed
+                : {};
+
+        const entries = {};
+        for (const [key, value] of Object.entries(sourceEntries)) {
+            const guildId = typeof value?.guildId === 'string' ? value.guildId : key.split(':')[0];
+            const userId = typeof value?.userId === 'string' ? value.userId : key.split(':')[1];
+            if (!guildId || !userId) continue;
+
+            const normalizedCounts = {};
+            const counts = value?.counts && typeof value.counts === 'object' ? value.counts : {};
+            for (const [dateKey, count] of Object.entries(counts)) {
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
+                if (!Number.isFinite(count) || count <= 0) continue;
+                normalizedCounts[dateKey] = Math.floor(count);
+            }
+
+            entries[getMessageStatsKey(guildId, userId)] = {
+                guildId,
+                userId,
+                counts: normalizedCounts,
+            };
+        }
+
+        return { entries };
+    }
+
     const guildConfigs = readJsonFile(config.FILES.guildConfig, {});
     const advertisementState = loadAdvertisementState();
+    const messageStatsState = loadMessageStatsState();
     const voiceHoursState = loadVoiceHoursState();
 
     const state = {
         guildConfigs,
         allowedInviteUsers: loadAllowedInviteUsers(),
         advertisements: advertisementState,
+        messageStats: messageStatsState,
         voiceHours: voiceHoursState,
         guildStageSessions: new Map(),
         saveAllowedInviteUsers() {
@@ -140,17 +185,33 @@ function createState(config) {
         saveAdvertisements() {
             writeJsonFile(config.FILES.obsAds, state.advertisements);
         },
+        saveMessageStats() {
+            writeJsonFile(config.FILES.messageStats, state.messageStats);
+        },
         saveVoiceHours() {
             writeJsonFile(config.FILES.voiceHours, state.voiceHours);
+        },
+        pruneMessageStats(now = new Date()) {
+            const cutoff = new Date(now.getTime() - (16 * 24 * 60 * 60 * 1000));
+            const cutoffKey = cutoff.toISOString().slice(0, 10);
+
+            for (const entry of Object.values(state.messageStats.entries)) {
+                for (const dateKey of Object.keys(entry.counts)) {
+                    if (dateKey < cutoffKey) {
+                        delete entry.counts[dateKey];
+                    }
+                }
+            }
         },
         pruneVoiceHourSessions(now = new Date()) {
             const cutoff = now.getTime() - (16 * 24 * 60 * 60 * 1000);
             state.voiceHours.sessions = state.voiceHours.sessions.filter(session => Date.parse(session.endedAt) >= cutoff);
         },
-        startVoiceHourSession(guildId, userId, channelId, startedAt = new Date()) {
+        startVoiceHourSession(guildId, userId, channelId, startedAt = new Date(), muted = false) {
             const key = getVoiceHoursKey(guildId, userId);
             if (state.voiceHours.active[key]) {
                 state.voiceHours.active[key].channelId = channelId;
+                state.voiceHours.active[key].muted = muted;
                 state.saveVoiceHours();
                 return state.voiceHours.active[key];
             }
@@ -160,11 +221,31 @@ function createState(config) {
                 userId,
                 channelId,
                 startedAt: startedAt.toISOString(),
+                muted,
             };
             state.saveVoiceHours();
             return state.voiceHours.active[key];
         },
-        moveVoiceHourSession(guildId, userId, channelId) {
+        moveVoiceHourSession(guildId, userId, channelId, movedAt = new Date(), muted = false) {
+            const key = getVoiceHoursKey(guildId, userId);
+            if (!state.voiceHours.active[key]) return null;
+            state.endVoiceHourSession(guildId, userId, movedAt);
+            return state.startVoiceHourSession(guildId, userId, channelId, movedAt, muted);
+        },
+        updateVoiceHourSessionMute(guildId, userId, muted, changedAt = new Date()) {
+            const key = getVoiceHoursKey(guildId, userId);
+            const activeSession = state.voiceHours.active[key];
+            if (!activeSession) return null;
+
+            if (activeSession.muted === muted) return activeSession;
+
+            if (muted) {
+                return state.endVoiceHourSession(guildId, userId, changedAt);
+            }
+
+            return state.startVoiceHourSession(guildId, userId, activeSession.channelId, changedAt, false);
+        },
+        setVoiceHourSessionChannel(guildId, userId, channelId) {
             const key = getVoiceHoursKey(guildId, userId);
             if (!state.voiceHours.active[key]) return null;
             state.voiceHours.active[key].channelId = channelId;
@@ -201,7 +282,7 @@ function createState(config) {
             const sessions = [
                 ...state.voiceHours.sessions,
                 ...Object.values(state.voiceHours.active)
-                    .filter(session => session.guildId === guildId && session.userId === userId)
+                    .filter(session => session.guildId === guildId && session.userId === userId && session.muted !== true)
                     .map(session => ({ ...session, endedAt: now.toISOString() })),
             ];
 
@@ -218,6 +299,43 @@ function createState(config) {
                     const overlapEndMs = Math.min(endedAtMs, nowMs);
                     if (overlapEndMs > overlapStartMs) {
                         totals[days] += overlapEndMs - overlapStartMs;
+                    }
+                }
+            }
+
+            return totals;
+        },
+        incrementMessageCount(guildId, userId, timestamp = new Date()) {
+            const key = getMessageStatsKey(guildId, userId);
+            if (!state.messageStats.entries[key]) {
+                state.messageStats.entries[key] = {
+                    guildId,
+                    userId,
+                    counts: {},
+                };
+            }
+
+            const dateKey = timestamp.toISOString().slice(0, 10);
+            const entry = state.messageStats.entries[key];
+            entry.counts[dateKey] = (entry.counts[dateKey] ?? 0) + 1;
+            state.pruneMessageStats(timestamp);
+            state.saveMessageStats();
+            return entry.counts[dateKey];
+        },
+        getMessageTotals(guildId, userId, now = new Date()) {
+            const windows = [1, 7, 14];
+            const totals = Object.fromEntries(windows.map(days => [days, 0]));
+            const entry = state.messageStats.entries[getMessageStatsKey(guildId, userId)];
+            if (!entry) return totals;
+
+            for (const [dateKey, count] of Object.entries(entry.counts)) {
+                const startOfDay = Date.parse(`${dateKey}T00:00:00.000Z`);
+                if (!Number.isFinite(startOfDay) || !Number.isFinite(count) || count <= 0) continue;
+                const dayAge = Math.floor((now.getTime() - startOfDay) / (24 * 60 * 60 * 1000));
+
+                for (const days of windows) {
+                    if (dayAge >= 0 && dayAge < days) {
+                        totals[days] += count;
                     }
                 }
             }

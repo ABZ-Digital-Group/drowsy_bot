@@ -254,12 +254,12 @@ function drawRanks(ctx) {
     statRow(ctx, 21, 184, 'Hours', '#--');
 }
 
-function drawMessages(ctx) {
+function drawMessages(ctx, totals) {
     panel(ctx, 292, 80, 268, 162);
     text(ctx, 'Messages', 302, 105, 22);
-    statRow(ctx, 302, 118, '1d', 'N/A');
-    statRow(ctx, 302, 158, '7d', 'N/A');
-    statRow(ctx, 302, 198, '14d', 'N/A');
+    statRow(ctx, 302, 118, '1d', `${totals[1] ?? 0} msgs`);
+    statRow(ctx, 302, 158, '7d', `${totals[7] ?? 0} msgs`);
+    statRow(ctx, 302, 198, '14d', `${totals[14] ?? 0} msgs`);
 }
 
 function drawVoiceActivity(ctx, totals) {
@@ -286,7 +286,7 @@ function drawTopChannels(ctx, totals) {
     text(ctx, `${formatHours(totals[7] ?? 0)} hours`, 248, 361, 20, { color: COLORS.text, weight: 500 });
 }
 
-function drawChart(ctx, totals) {
+function drawChart(ctx, voiceTotals, messageTotals) {
     panel(ctx, 432, 256, 410, 162);
     text(ctx, 'Charts', 446, 291, 23);
 
@@ -302,23 +302,32 @@ function drawChart(ctx, totals) {
     ctx.fill();
     text(ctx, 'Voice', 783, 281, 20);
 
-    const values = [totals[1] ?? 0, totals[7] ?? 0, totals[14] ?? 0].map(value => value / 3600000);
-    const max = Math.max(...values, 1);
+    const voiceValues = [voiceTotals[1] ?? 0, voiceTotals[7] ?? 0, voiceTotals[14] ?? 0].map(value => value / 3600000);
+    const messageValues = [messageTotals[1] ?? 0, messageTotals[7] ?? 0, messageTotals[14] ?? 0];
+    const max = Math.max(...voiceValues, ...messageValues, 1);
     const labels = ['1d', '7d', '14d'];
     const baseY = 390;
 
-    values.forEach((value, index) => {
+    labels.forEach((label, index) => {
         const x = 470 + (index * 105);
-        const height = Math.max(4, Math.round((value / max) * 78));
-        const gradient = ctx.createLinearGradient(x, baseY - height, x, baseY);
-        gradient.addColorStop(0, index === 2 ? '#29c7a7' : '#7c72ff');
-        gradient.addColorStop(1, index === 2 ? '#68c7ff' : '#f26ca7');
-        fillRound(ctx, x, baseY - height, 54, height, 7, gradient);
-        text(ctx, labels[index], x + 15, 413, 18, { color: COLORS.muted });
+        const messageHeight = Math.max(4, Math.round((messageValues[index] / max) * 78));
+        const voiceHeight = Math.max(4, Math.round((voiceValues[index] / max) * 78));
+
+        const messageGradient = ctx.createLinearGradient(x, baseY - messageHeight, x, baseY);
+        messageGradient.addColorStop(0, '#7c72ff');
+        messageGradient.addColorStop(1, '#f26ca7');
+        fillRound(ctx, x, baseY - messageHeight, 24, messageHeight, 7, messageGradient);
+
+        const voiceGradient = ctx.createLinearGradient(x + 30, baseY - voiceHeight, x + 30, baseY);
+        voiceGradient.addColorStop(0, '#29c7a7');
+        voiceGradient.addColorStop(1, '#68c7ff');
+        fillRound(ctx, x + 30, baseY - voiceHeight, 24, voiceHeight, 7, voiceGradient);
+
+        text(ctx, label, x + 12, 413, 18, { color: COLORS.muted });
     });
 }
 
-async function buildHoursCard({ subject, guild, totals }) {
+async function buildHoursCard({ subject, guild, totals, messageTotals = {} }) {
     const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
     registerSatoshiFont(GlobalFonts);
 
@@ -351,10 +360,10 @@ async function buildHoursCard({ subject, guild, totals }) {
     dateBox(ctx, 704, 'Joined On', formatDate(subject.joinedAt));
 
     drawRanks(ctx);
-    drawMessages(ctx);
+    drawMessages(ctx, messageTotals);
     drawVoiceActivity(ctx, totals);
     drawTopChannels(ctx, totals);
-    drawChart(ctx, totals);
+    drawChart(ctx, totals, messageTotals);
 
     text(ctx, 'Server Lookback: Last 14 days - Timezone: UTC', 14, 450, 17, { color: COLORS.text });
     text(ctx, 'Drowsy Bot', 734, 450, 17, { color: COLORS.muted });
