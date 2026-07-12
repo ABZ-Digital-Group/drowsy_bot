@@ -7,19 +7,19 @@ const FONT_FAMILY = '"Satoshi", "Segoe UI", Arial, sans-serif';
 let satoshiRegistered = false;
 
 const COLORS = {
-    page: '#e7ecff',
-    panel: '#dfe6ff',
-    panelDark: '#cfd8ff',
-    chip: '#bfcdfd',
-    text: '#233056',
-    muted: '#586a99',
+    page: '#1a1f36',
+    panel: '#252b46',
+    panelDark: '#1d233b',
+    chip: '#313a66',
+    text: '#edf2ff',
+    muted: '#a8b5df',
     green: '#19c7a3',
     pink: '#ff5fa2',
     cyan: '#4dc8ff',
     violet: '#7b61ff',
-    shadow: 'rgba(102, 126, 234, 0.22)',
-    shadowSoft: 'rgba(115, 136, 214, 0.16)',
-    highlight: 'rgba(255, 255, 255, 0.92)',
+    shadow: 'rgba(6, 10, 26, 0.48)',
+    shadowSoft: 'rgba(10, 16, 38, 0.3)',
+    highlight: 'rgba(86, 105, 170, 0.32)',
 };
 
 function strokeRound(ctx, x, y, width, height, radius, strokeStyle, lineWidth = 1) {
@@ -124,28 +124,28 @@ function panel(ctx, x, y, width, height) {
     ctx.restore();
 
     const gradient = ctx.createLinearGradient(x, y, x, y + height);
-    gradient.addColorStop(0, '#edf2ff');
+    gradient.addColorStop(0, '#30385c');
     gradient.addColorStop(0.45, COLORS.panel);
-    gradient.addColorStop(1, '#d6deff');
+    gradient.addColorStop(1, '#1d2340');
     fillRound(ctx, x, y, width, height, 12, gradient);
 
     fillClippedRound(ctx, x, y, width, height, 12, () => {
         const glow = ctx.createRadialGradient(x + (width * 0.2), y + (height * 0.12), 0, x + (width * 0.2), y + (height * 0.12), width * 0.85);
-        glow.addColorStop(0, 'rgba(123, 97, 255, 0.18)');
-        glow.addColorStop(0.55, 'rgba(77, 200, 255, 0.09)');
+        glow.addColorStop(0, 'rgba(123, 97, 255, 0.24)');
+        glow.addColorStop(0.55, 'rgba(77, 200, 255, 0.12)');
         glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = glow;
         ctx.fillRect(x, y, width, height);
 
         const topSheen = ctx.createLinearGradient(x, y, x, y + (height * 0.5));
-        topSheen.addColorStop(0, 'rgba(255, 255, 255, 0.42)');
+        topSheen.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
         topSheen.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = topSheen;
         ctx.fillRect(x, y, width, height * 0.5);
     });
 
-    strokeRound(ctx, x + 0.5, y + 0.5, width - 1, height - 1, 11.5, 'rgba(255, 255, 255, 0.55)');
-    strokeRound(ctx, x + 1.5, y + 1.5, width - 3, height - 3, 10.5, 'rgba(112, 132, 214, 0.12)');
+    strokeRound(ctx, x + 0.5, y + 0.5, width - 1, height - 1, 11.5, 'rgba(124, 145, 220, 0.22)');
+    strokeRound(ctx, x + 1.5, y + 1.5, width - 3, height - 3, 10.5, 'rgba(8, 12, 28, 0.34)');
 }
 
 function text(ctx, value, x, y, size, options = {}) {
@@ -175,8 +175,8 @@ function text(ctx, value, x, y, size, options = {}) {
 
 function statRow(ctx, x, y, label, value) {
     const rowGradient = ctx.createLinearGradient(x, y, x, y + 34);
-    rowGradient.addColorStop(0, '#ecf1ff');
-    rowGradient.addColorStop(1, '#d6defe');
+    rowGradient.addColorStop(0, '#30375b');
+    rowGradient.addColorStop(1, '#1d233b');
     fillRound(ctx, x, y, 260, 34, 5, rowGradient);
 
     const chipGradient = ctx.createLinearGradient(x, y, x, y + 34);
@@ -184,8 +184,8 @@ function statRow(ctx, x, y, label, value) {
     chipGradient.addColorStop(1, '#47c7ff');
     fillRound(ctx, x, y, 84, 34, 5, chipGradient);
 
-    strokeRound(ctx, x + 0.5, y + 0.5, 259, 33, 4.5, 'rgba(255, 255, 255, 0.6)');
-    strokeRound(ctx, x + 0.5, y + 0.5, 83, 33, 4.5, 'rgba(255, 255, 255, 0.4)');
+    strokeRound(ctx, x + 0.5, y + 0.5, 259, 33, 4.5, 'rgba(123, 142, 214, 0.2)');
+    strokeRound(ctx, x + 0.5, y + 0.5, 83, 33, 4.5, 'rgba(255, 255, 255, 0.18)');
     text(ctx, label, x + 17, y + 23, 22, { maxWidth: 66 });
     text(ctx, value, x + 104, y + 22, 20, { color: COLORS.text, weight: 500, maxWidth: 140 });
 }
@@ -228,17 +228,17 @@ async function drawAvatar(ctx, subject, loadImage) {
 
 function dateBox(ctx, x, label, value) {
     const gradient = ctx.createLinearGradient(x, 7, x, 67);
-    gradient.addColorStop(0, '#f2f5ff');
-    gradient.addColorStop(1, '#d5ddff');
+    gradient.addColorStop(0, '#2f375c');
+    gradient.addColorStop(1, '#202742');
     fillRound(ctx, x, 7, 138, 60, 7, gradient);
     fillClippedRound(ctx, x, 7, 138, 60, 7, () => {
         const highlight = ctx.createLinearGradient(x, 7, x, 34);
-        highlight.addColorStop(0, 'rgba(255, 255, 255, 0.52)');
+        highlight.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
         highlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = highlight;
         ctx.fillRect(x, 7, 138, 27);
     });
-    strokeRound(ctx, x + 0.5, 7.5, 137, 59, 6.5, 'rgba(255, 255, 255, 0.58)');
+    strokeRound(ctx, x + 0.5, 7.5, 137, 59, 6.5, 'rgba(125, 145, 219, 0.18)');
     text(ctx, label, x + 12, 29, 16, { color: COLORS.text, maxWidth: 114 });
     text(ctx, value, x + 12, 57, 20, { color: COLORS.muted, weight: 500, maxWidth: 114 });
 }
@@ -323,20 +323,20 @@ async function buildHoursCard({ subject, guild, totals }) {
     const displayName = subject.displayName ?? subject.user.globalName ?? subject.user.username;
 
     const background = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
-    background.addColorStop(0, '#eef3ff');
-    background.addColorStop(0.45, '#dde6ff');
-    background.addColorStop(1, '#cfdcff');
+    background.addColorStop(0, '#171c31');
+    background.addColorStop(0.45, '#202744');
+    background.addColorStop(1, '#12172a');
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
     const aura = ctx.createRadialGradient(120, 80, 0, 120, 80, 420);
-    aura.addColorStop(0, 'rgba(123, 97, 255, 0.18)');
-    aura.addColorStop(0.55, 'rgba(77, 200, 255, 0.12)');
+    aura.addColorStop(0, 'rgba(123, 97, 255, 0.28)');
+    aura.addColorStop(0.55, 'rgba(77, 200, 255, 0.16)');
     aura.addColorStop(1, 'rgba(255, 255, 255, 0)');
     ctx.fillStyle = aura;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    fillRound(ctx, 0, 0, WIDTH, HEIGHT, 18, 'rgba(255, 255, 255, 0.08)');
+    fillRound(ctx, 0, 0, WIDTH, HEIGHT, 18, 'rgba(255, 255, 255, 0.02)');
     await drawAvatar(ctx, subject, loadImage);
 
     text(ctx, displayName, 84, 35, 26, { maxWidth: 430 });
