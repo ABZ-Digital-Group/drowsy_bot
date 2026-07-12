@@ -287,11 +287,11 @@ function drawTopChannels(ctx, topActivity) {
     fillRound(ctx, 64, 336, 346, 34, 5, COLORS.panelDark);
     fillRound(ctx, 64, 378, 346, 34, 5, COLORS.panelDark);
 
-    text(ctx, 'VC', 24, 320, 22);
+    text(ctx, '◉', 27, 320, 20, { color: COLORS.cyan });
     text(ctx, topActivity?.voice?.name ?? 'No voice data', 84, 319, 23, { maxWidth: 150 });
     text(ctx, `${formatHours(topActivity?.voice?.total ?? 0)} hours`, 244, 319, 20, { color: COLORS.text, weight: 500, maxWidth: 150 });
 
-    text(ctx, 'MSG', 20, 361, 20);
+    text(ctx, '✦', 25, 361, 20, { color: COLORS.violet });
     text(ctx, topActivity?.messages?.name ?? 'No message data', 84, 361, 23, { maxWidth: 150 });
     text(ctx, formatMessageCount(topActivity?.messages?.total ?? 0), 244, 361, 20, { color: COLORS.text, weight: 500, maxWidth: 150 });
 
