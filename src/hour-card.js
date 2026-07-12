@@ -7,19 +7,20 @@ const FONT_FAMILY = '"Satoshi", "Segoe UI", Arial, sans-serif';
 let satoshiRegistered = false;
 
 const COLORS = {
-    page: '#1a1f36',
-    panel: '#252b46',
-    panelDark: '#1d233b',
-    chip: '#313a66',
-    text: '#edf2ff',
-    muted: '#a8b5df',
-    green: '#19c7a3',
-    pink: '#ff5fa2',
-    cyan: '#4dc8ff',
-    violet: '#7b61ff',
-    shadow: 'rgba(6, 10, 26, 0.48)',
-    shadowSoft: 'rgba(10, 16, 38, 0.3)',
-    highlight: 'rgba(86, 105, 170, 0.32)',
+    page: '#f3f6ff',
+    panel: '#e6ecff',
+    panelDark: '#d8e2ff',
+    chip: '#c9d8ff',
+    text: '#27314f',
+    muted: '#6b789d',
+    green: '#29c7a7',
+    pink: '#f26ca7',
+    cyan: '#68c7ff',
+    violet: '#7c72ff',
+    peach: '#ffb38a',
+    shadow: 'rgba(121, 137, 196, 0.22)',
+    shadowSoft: 'rgba(139, 155, 212, 0.16)',
+    highlight: 'rgba(255, 255, 255, 0.94)',
 };
 
 function strokeRound(ctx, x, y, width, height, radius, strokeStyle, lineWidth = 1) {
@@ -124,28 +125,29 @@ function panel(ctx, x, y, width, height) {
     ctx.restore();
 
     const gradient = ctx.createLinearGradient(x, y, x, y + height);
-    gradient.addColorStop(0, '#30385c');
+    gradient.addColorStop(0, '#f3f6ff');
     gradient.addColorStop(0.45, COLORS.panel);
-    gradient.addColorStop(1, '#1d2340');
+    gradient.addColorStop(1, '#dbe5ff');
     fillRound(ctx, x, y, width, height, 12, gradient);
 
     fillClippedRound(ctx, x, y, width, height, 12, () => {
         const glow = ctx.createRadialGradient(x + (width * 0.2), y + (height * 0.12), 0, x + (width * 0.2), y + (height * 0.12), width * 0.85);
-        glow.addColorStop(0, 'rgba(123, 97, 255, 0.24)');
-        glow.addColorStop(0.55, 'rgba(77, 200, 255, 0.12)');
+        glow.addColorStop(0, 'rgba(124, 114, 255, 0.16)');
+        glow.addColorStop(0.5, 'rgba(104, 199, 255, 0.1)');
+        glow.addColorStop(0.75, 'rgba(255, 179, 138, 0.08)');
         glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = glow;
         ctx.fillRect(x, y, width, height);
 
         const topSheen = ctx.createLinearGradient(x, y, x, y + (height * 0.5));
-        topSheen.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
+        topSheen.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
         topSheen.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = topSheen;
         ctx.fillRect(x, y, width, height * 0.5);
     });
 
-    strokeRound(ctx, x + 0.5, y + 0.5, width - 1, height - 1, 11.5, 'rgba(124, 145, 220, 0.22)');
-    strokeRound(ctx, x + 1.5, y + 1.5, width - 3, height - 3, 10.5, 'rgba(8, 12, 28, 0.34)');
+    strokeRound(ctx, x + 0.5, y + 0.5, width - 1, height - 1, 11.5, 'rgba(255, 255, 255, 0.65)');
+    strokeRound(ctx, x + 1.5, y + 1.5, width - 3, height - 3, 10.5, 'rgba(134, 150, 205, 0.14)');
 }
 
 function text(ctx, value, x, y, size, options = {}) {
@@ -175,17 +177,18 @@ function text(ctx, value, x, y, size, options = {}) {
 
 function statRow(ctx, x, y, label, value) {
     const rowGradient = ctx.createLinearGradient(x, y, x, y + 34);
-    rowGradient.addColorStop(0, '#30375b');
-    rowGradient.addColorStop(1, '#1d233b');
+    rowGradient.addColorStop(0, '#f4f7ff');
+    rowGradient.addColorStop(1, '#dde6ff');
     fillRound(ctx, x, y, 260, 34, 5, rowGradient);
 
     const chipGradient = ctx.createLinearGradient(x, y, x, y + 34);
-    chipGradient.addColorStop(0, '#8c7dff');
-    chipGradient.addColorStop(1, '#47c7ff');
+    chipGradient.addColorStop(0, '#8c80ff');
+    chipGradient.addColorStop(0.5, '#68c7ff');
+    chipGradient.addColorStop(1, '#8ee0c5');
     fillRound(ctx, x, y, 84, 34, 5, chipGradient);
 
-    strokeRound(ctx, x + 0.5, y + 0.5, 259, 33, 4.5, 'rgba(123, 142, 214, 0.2)');
-    strokeRound(ctx, x + 0.5, y + 0.5, 83, 33, 4.5, 'rgba(255, 255, 255, 0.18)');
+    strokeRound(ctx, x + 0.5, y + 0.5, 259, 33, 4.5, 'rgba(255, 255, 255, 0.62)');
+    strokeRound(ctx, x + 0.5, y + 0.5, 83, 33, 4.5, 'rgba(255, 255, 255, 0.28)');
     text(ctx, label, x + 17, y + 23, 22, { maxWidth: 66 });
     text(ctx, value, x + 104, y + 22, 20, { color: COLORS.text, weight: 500, maxWidth: 140 });
 }
@@ -201,8 +204,9 @@ function drawInitialsAvatar(ctx, subject) {
         .toUpperCase() || '?';
 
     const avatarGradient = ctx.createLinearGradient(12, 8, 70, 66);
-    avatarGradient.addColorStop(0, '#7a67ff');
-    avatarGradient.addColorStop(1, '#36d4ff');
+    avatarGradient.addColorStop(0, '#7c72ff');
+    avatarGradient.addColorStop(0.55, '#68c7ff');
+    avatarGradient.addColorStop(1, '#ffb38a');
     fillRound(ctx, 12, 8, 58, 58, 14, avatarGradient);
     text(ctx, initials, 23, 45, 21, { color: COLORS.text, maxWidth: 38 });
 }
@@ -228,17 +232,17 @@ async function drawAvatar(ctx, subject, loadImage) {
 
 function dateBox(ctx, x, label, value) {
     const gradient = ctx.createLinearGradient(x, 7, x, 67);
-    gradient.addColorStop(0, '#2f375c');
-    gradient.addColorStop(1, '#202742');
+    gradient.addColorStop(0, '#f7f9ff');
+    gradient.addColorStop(1, '#dfe7ff');
     fillRound(ctx, x, 7, 138, 60, 7, gradient);
     fillClippedRound(ctx, x, 7, 138, 60, 7, () => {
         const highlight = ctx.createLinearGradient(x, 7, x, 34);
-        highlight.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        highlight.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
         highlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = highlight;
         ctx.fillRect(x, 7, 138, 27);
     });
-    strokeRound(ctx, x + 0.5, 7.5, 137, 59, 6.5, 'rgba(125, 145, 219, 0.18)');
+    strokeRound(ctx, x + 0.5, 7.5, 137, 59, 6.5, 'rgba(255, 255, 255, 0.65)');
     text(ctx, label, x + 12, 29, 16, { color: COLORS.text, maxWidth: 114 });
     text(ctx, value, x + 12, 57, 20, { color: COLORS.muted, weight: 500, maxWidth: 114 });
 }
@@ -307,8 +311,8 @@ function drawChart(ctx, totals) {
         const x = 470 + (index * 105);
         const height = Math.max(4, Math.round((value / max) * 78));
         const gradient = ctx.createLinearGradient(x, baseY - height, x, baseY);
-        gradient.addColorStop(0, index === 2 ? '#20d9b1' : '#8d68ff');
-        gradient.addColorStop(1, index === 2 ? '#00b7d6' : '#ff5f9e');
+        gradient.addColorStop(0, index === 2 ? '#29c7a7' : '#7c72ff');
+        gradient.addColorStop(1, index === 2 ? '#68c7ff' : '#f26ca7');
         fillRound(ctx, x, baseY - height, 54, height, 7, gradient);
         text(ctx, labels[index], x + 15, 413, 18, { color: COLORS.muted });
     });
@@ -323,20 +327,21 @@ async function buildHoursCard({ subject, guild, totals }) {
     const displayName = subject.displayName ?? subject.user.globalName ?? subject.user.username;
 
     const background = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
-    background.addColorStop(0, '#171c31');
-    background.addColorStop(0.45, '#202744');
-    background.addColorStop(1, '#12172a');
+    background.addColorStop(0, '#f7f9ff');
+    background.addColorStop(0.45, '#e7edff');
+    background.addColorStop(1, '#d8e2ff');
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
     const aura = ctx.createRadialGradient(120, 80, 0, 120, 80, 420);
-    aura.addColorStop(0, 'rgba(123, 97, 255, 0.28)');
-    aura.addColorStop(0.55, 'rgba(77, 200, 255, 0.16)');
+    aura.addColorStop(0, 'rgba(124, 114, 255, 0.18)');
+    aura.addColorStop(0.5, 'rgba(104, 199, 255, 0.14)');
+    aura.addColorStop(0.78, 'rgba(255, 179, 138, 0.1)');
     aura.addColorStop(1, 'rgba(255, 255, 255, 0)');
     ctx.fillStyle = aura;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    fillRound(ctx, 0, 0, WIDTH, HEIGHT, 18, 'rgba(255, 255, 255, 0.02)');
+    fillRound(ctx, 0, 0, WIDTH, HEIGHT, 18, 'rgba(255, 255, 255, 0.08)');
     await drawAvatar(ctx, subject, loadImage);
 
     text(ctx, displayName, 84, 35, 26, { maxWidth: 430 });
