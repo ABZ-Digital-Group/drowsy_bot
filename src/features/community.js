@@ -26,6 +26,15 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     const shyStageBaseName = 'Shy Stage';
     const shyStageAlwaysVisibleCount = 2;
     const shyStageUserLimit = 3;
+    const romanNumeralValues = new Map([
+        ['I', 1],
+        ['V', 5],
+        ['X', 10],
+        ['L', 50],
+        ['C', 100],
+        ['D', 500],
+        ['M', 1000],
+    ]);
 
     function formatHours(milliseconds) {
         return (milliseconds / 3600000).toFixed(2);
@@ -88,16 +97,38 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     }
 
     function parseShyStageIndex(channelName) {
-        const match = new RegExp(`^${escapeRegExp(shyStageBaseName)}\\s+(\\d+)$`, 'i').exec(channelName?.trim() ?? '');
+        const match = new RegExp(`^${escapeRegExp(shyStageBaseName)}\\s+([ivxlcdm]+|\\d+)$`, 'i').exec(channelName?.trim() ?? '');
         if (!match) return null;
 
-        const parsedIndex = Number.parseInt(match[1], 10);
+        const indexToken = match[1].toUpperCase();
+        const parsedIndex = /^\d+$/.test(indexToken)
+            ? Number.parseInt(indexToken, 10)
+            : parseRomanNumeral(indexToken);
         return Number.isInteger(parsedIndex) && parsedIndex > 0 ? parsedIndex : null;
+    }
+
+    function parseRomanNumeral(value) {
+        let total = 0;
+        let previousValue = 0;
+
+        for (let index = value.length - 1; index >= 0; index -= 1) {
+            const currentValue = romanNumeralValues.get(value[index]);
+            if (!currentValue) return null;
+
+            if (currentValue < previousValue) {
+                total -= currentValue;
+            } else {
+                total += currentValue;
+                previousValue = currentValue;
+            }
+        }
+
+        return total;
     }
 
     function getShyStageChannels(guild) {
         return guild.channels.cache
-            .filter(channel => channel.type === ChannelType.GuildVoice)
+            .filter(channel => channel.type === ChannelType.GuildVoice || channel.type === ChannelType.GuildStageVoice)
             .map(channel => ({ channel, index: parseShyStageIndex(channel.name) }))
             .filter(entry => entry.index !== null)
             .sort((left, right) => left.index - right.index);
@@ -133,8 +164,8 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
     async function createShyStageChannel(guild, index, categoryId, anchorChannel) {
         const createdChannel = await guild.channels.create({
-            name: `${shyStageBaseName} ${index}`,
-            type: ChannelType.GuildVoice,
+            name: `${shyStageBaseName} ${formatShyStageIndex(index)}`,
+            type: anchorChannel?.type === ChannelType.GuildStageVoice ? ChannelType.GuildStageVoice : ChannelType.GuildVoice,
             parent: categoryId,
             userLimit: shyStageUserLimit,
         });
@@ -145,6 +176,36 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
         await setShyStageVisibility(createdChannel, false);
         return createdChannel;
+    }
+
+    function formatShyStageIndex(index) {
+        const numerals = [
+            ['M', 1000],
+            ['CM', 900],
+            ['D', 500],
+            ['CD', 400],
+            ['C', 100],
+            ['XC', 90],
+            ['L', 50],
+            ['XL', 40],
+            ['X', 10],
+            ['IX', 9],
+            ['V', 5],
+            ['IV', 4],
+            ['I', 1],
+        ];
+
+        let remaining = index;
+        let output = '';
+
+        for (const [token, value] of numerals) {
+            while (remaining >= value) {
+                output += token;
+                remaining -= value;
+            }
+        }
+
+        return output || String(index);
     }
 
     async function resolveShyStageSideChat(channel) {
