@@ -23,6 +23,9 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     let hoursCardRenderingDisabled = false;
     const fallbackAnnouncementColor = 0x5865F2;
     const hourWindows = [1, 7, 14];
+    const shyStageBaseName = 'Shy Stage';
+    const shyStageAlwaysVisibleCount = 2;
+    const shyStageUserLimit = 3;
 
     function formatHours(milliseconds) {
         return (milliseconds / 3600000).toFixed(2);
@@ -78,6 +81,118 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         return Boolean(voiceState?.channelId)
             && voiceState.selfMute !== true
             && voiceState.serverMute !== true;
+    }
+
+    function escapeRegExp(value) {
+        return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function parseShyStageIndex(channelName) {
+        const match = new RegExp(`^${escapeRegExp(shyStageBaseName)}\\s+(\\d+)$`, 'i').exec(channelName?.trim() ?? '');
+        if (!match) return null;
+
+        const parsedIndex = Number.parseInt(match[1], 10);
+        return Number.isInteger(parsedIndex) && parsedIndex > 0 ? parsedIndex : null;
+    }
+
+    function getShyStageChannels(guild) {
+        return guild.channels.cache
+            .filter(channel => channel.type === ChannelType.GuildVoice)
+            .map(channel => ({ channel, index: parseShyStageIndex(channel.name) }))
+            .filter(entry => entry.index !== null)
+            .sort((left, right) => left.index - right.index);
+    }
+
+    function getShyStageCategoryId(stageChannels) {
+        return stageChannels[0]?.channel.parentId ?? null;
+    }
+
+    async function setShyStageVisibility(channel, isVisible) {
+        const everyoneRole = channel.guild.roles.everyone;
+        const existingOverwrite = channel.permissionOverwrites.cache.get(everyoneRole.id);
+        const currentViewState = existingOverwrite?.allow.has(PermissionFlagsBits.ViewChannel)
+            ? true
+            : existingOverwrite?.deny.has(PermissionFlagsBits.ViewChannel)
+                ? false
+                : null;
+
+        if (channel.userLimit !== shyStageUserLimit) {
+            await channel.edit({ userLimit: shyStageUserLimit });
+        }
+
+        if (currentViewState === isVisible) {
+            return channel;
+        }
+
+        await channel.permissionOverwrites.edit(everyoneRole, {
+            ViewChannel: isVisible,
+        });
+
+        return channel;
+    }
+
+    async function createShyStageChannel(guild, index, categoryId, anchorChannel) {
+        const createdChannel = await guild.channels.create({
+            name: `${shyStageBaseName} ${index}`,
+            type: ChannelType.GuildVoice,
+            parent: categoryId,
+            userLimit: shyStageUserLimit,
+        });
+
+        if (anchorChannel) {
+            await createdChannel.setPosition(anchorChannel.rawPosition + 1).catch(() => {});
+        }
+
+        await setShyStageVisibility(createdChannel, false);
+        return createdChannel;
+    }
+
+    async function resolveShyStageSideChat(channel) {
+        if (!channel?.parentId) return null;
+
+        const siblingTextChannels = channel.guild.channels.cache
+            .filter(candidate => candidate.parentId === channel.parentId && candidate.isTextBased())
+            .sort((left, right) => left.rawPosition - right.rawPosition);
+
+        return siblingTextChannels.first() ?? null;
+    }
+
+    async function announceShyStageOpened(channel) {
+        const sideChat = await resolveShyStageSideChat(channel);
+        if (!sideChat) return;
+
+        await sideChat.send(`<#${channel.id}> is now open. Member limit: ${shyStageUserLimit}.`).catch(() => {});
+    }
+
+    async function syncShyStageRooms(guild, changedChannelId = null) {
+        const stageChannels = getShyStageChannels(guild);
+        if (stageChannels.length < shyStageAlwaysVisibleCount) return;
+
+        const categoryId = getShyStageCategoryId(stageChannels);
+        const lastStageEntry = stageChannels[stageChannels.length - 1];
+
+        for (const entry of stageChannels) {
+            const shouldAlwaysBeVisible = entry.index <= shyStageAlwaysVisibleCount;
+            const memberCount = entry.channel.members.filter(member => !member.user.bot).size;
+            const shouldBeVisible = shouldAlwaysBeVisible || memberCount > 0;
+            await setShyStageVisibility(entry.channel, shouldBeVisible);
+        }
+
+        if (changedChannelId) {
+            const changedEntry = stageChannels.find(entry => entry.channel.id === changedChannelId);
+            if (changedEntry) {
+                const changedMemberCount = changedEntry.channel.members.filter(member => !member.user.bot).size;
+                const isLastVisibleSlot = changedEntry.index === lastStageEntry.index;
+                if (changedMemberCount === 1 && isLastVisibleSlot) {
+                    const nextIndex = changedEntry.index + 1;
+                    const existingNext = stageChannels.find(entry => entry.index === nextIndex)?.channel
+                        ?? await createShyStageChannel(guild, nextIndex, categoryId, changedEntry.channel);
+
+                    await setShyStageVisibility(existingNext, false);
+                    await announceShyStageOpened(changedEntry.channel);
+                }
+            }
+        }
     }
 
     function buildHoursEmbed(subject, voiceTotals, messageTotals, ranks, guild) {
@@ -883,6 +998,10 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const guild = newState.guild ?? oldState.guild;
         if (!member || member.user.bot || !guild) return;
 
+        const oldStageIndex = parseShyStageIndex(oldState.channel?.name ?? null);
+        const newStageIndex = parseShyStageIndex(newState.channel?.name ?? null);
+        const touchedShyStage = oldStageIndex !== null || newStageIndex !== null;
+
         const oldChannelId = oldState.channelId;
         const newChannelId = newState.channelId;
         const wasCounted = isCountedVoiceState(oldState);
@@ -892,12 +1011,18 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             if (oldChannelId && wasCounted !== isCounted) {
                 state.updateVoiceHourSessionMute(guild.id, member.id, !isCounted, new Date());
             }
+            if (touchedShyStage && oldChannelId) {
+                await syncShyStageRooms(guild, oldChannelId);
+            }
             return;
         }
 
         if (!oldChannelId && newChannelId) {
             if (isCounted) {
                 state.startVoiceHourSession(guild.id, member.id, newChannelId, new Date(), false);
+            }
+            if (newStageIndex !== null) {
+                await syncShyStageRooms(guild, newChannelId);
             }
             return;
         }
@@ -906,21 +1031,33 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             if (wasCounted) {
                 state.endVoiceHourSession(guild.id, member.id);
             }
+            if (oldStageIndex !== null) {
+                await syncShyStageRooms(guild, oldChannelId);
+            }
             return;
         }
 
         if (wasCounted && isCounted) {
             state.moveVoiceHourSession(guild.id, member.id, newChannelId, new Date(), false);
+            if (touchedShyStage) {
+                await syncShyStageRooms(guild, newChannelId ?? oldChannelId);
+            }
             return;
         }
 
         if (wasCounted) {
             state.endVoiceHourSession(guild.id, member.id);
+            if (oldStageIndex !== null) {
+                await syncShyStageRooms(guild, oldChannelId);
+            }
             return;
         }
 
         if (isCounted) {
             state.startVoiceHourSession(guild.id, member.id, newChannelId, new Date(), false);
+            if (newStageIndex !== null) {
+                await syncShyStageRooms(guild, newChannelId);
+            }
         }
     }
 

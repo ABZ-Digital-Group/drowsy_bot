@@ -155,6 +155,14 @@ The stage queue is built for hosted performances or open-mic style events.
 - uploaded sponsor images are stored under `assets/ads/` for the OBS ad overlay
 - when a stage is active, the bot also posts the current sponsor ad into the active control-panel text channels and updates it as ads change or rotate
 
+## Shy Stage Overflow Rooms
+
+- voice channels named `Shy Stage 1`, `Shy Stage 2`, `Shy Stage 3`, and so on are managed automatically
+- `Shy Stage 1` and `Shy Stage 2` stay visible at all times
+- when the first non-bot member joins the last currently available shy stage, the bot creates or reveals the next shy stage channel and sets its member limit to `3`
+- empty overflow rooms such as `Shy Stage 3+` are hidden again when everyone leaves
+- the bot posts a side-chat notice to the first text channel in the same category when a shy stage room opens
+
 ### OBS Text Source
 
 If the bot and OBS run on the same machine, you can add a text source that reads from:
