@@ -445,6 +445,12 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const payload = eventLinks.length > 0
             ? eventLinks.join('\n')
             : 'There are no live or upcoming server events right now.';
+
+        if (typeof target.isRepliable === 'function' && target.isRepliable()) {
+            const method = target.deferred || target.replied ? 'editReply' : 'reply';
+            return target[method](payload);
+        }
+
         return target.reply(payload);
     }
 
@@ -671,6 +677,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
         if (interaction.commandName === 'events') {
             try {
+                await interaction.deferReply();
                 await sendActiveEvents(interaction, interaction.guild);
             } catch (error) {
                 console.error('Slash event lookup failed:', error);
