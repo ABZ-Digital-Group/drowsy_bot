@@ -376,6 +376,8 @@ function drawEventStatTile(ctx, x, y, width, height, label, value, accentColors)
 }
 
 function summaryRow(ctx, x, y, width, label, value) {
+    const labelChipWidth = 116;
+
     const rowGradient = ctx.createLinearGradient(x, y, x, y + 34);
     rowGradient.addColorStop(0, '#f4f7ff');
     rowGradient.addColorStop(1, '#dde6ff');
@@ -385,12 +387,12 @@ function summaryRow(ctx, x, y, width, label, value) {
     chipGradient.addColorStop(0, '#8c80ff');
     chipGradient.addColorStop(0.5, '#68c7ff');
     chipGradient.addColorStop(1, '#8ee0c5');
-    fillRound(ctx, x, y, 84, 34, 5, chipGradient);
+    fillRound(ctx, x, y, labelChipWidth, 34, 5, chipGradient);
 
     strokeRound(ctx, x + 0.5, y + 0.5, width - 1, 33, 4.5, 'rgba(255, 255, 255, 0.62)');
-    strokeRound(ctx, x + 0.5, y + 0.5, 83, 33, 4.5, 'rgba(255, 255, 255, 0.28)');
-    text(ctx, label, x + 17, y + 23, 22, { maxWidth: 66 });
-    text(ctx, value, x + 104, y + 22, 20, { color: COLORS.text, weight: 500, maxWidth: width - 122 });
+    strokeRound(ctx, x + 0.5, y + 0.5, labelChipWidth - 1, 33, 4.5, 'rgba(255, 255, 255, 0.28)');
+    text(ctx, label, x + 14, y + 23, 19, { maxWidth: labelChipWidth - 26 });
+    text(ctx, value, x + labelChipWidth + 20, y + 22, 20, { color: COLORS.text, weight: 500, maxWidth: width - labelChipWidth - 34 });
 }
 
 function formatDateTime(date) {
