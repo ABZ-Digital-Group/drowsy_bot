@@ -212,6 +212,27 @@ function text(ctx, value, x, y, size, options = {}) {
     ctx.restore();
 }
 
+function normalizeCardText(value) {
+    if (value === null || value === undefined) return '';
+
+    return String(value)
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[\u200B-\u200D\uFE0E\uFE0F]/g, '')
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .replace(/[•·]/g, '-')
+        .replace(/[–—―]/g, '-')
+        .replace(/[│┃╎╏]/g, '|')
+        .replace(/[★☆✦✧✩✪✫✬✭✮✯]/g, '*')
+        .replace(/[♡♥]/g, '<3')
+        .replace(/[【】]/g, '[]')
+        .replace(/[「」『』]/g, '"')
+        .replace(/[^\x20-\x7E]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function statRow(ctx, x, y, label, value) {
     const rowGradient = ctx.createLinearGradient(x, y, x, y + 34);
     rowGradient.addColorStop(0, '#f4f7ff');
@@ -339,11 +360,11 @@ function drawTopChannels(ctx, topActivity) {
     fillRound(ctx, 64, 378, 346, 34, 5, COLORS.panelDark);
 
     text(ctx, '🔊', 27, 320, 20, { color: COLORS.cyan });
-    text(ctx, topActivity?.voice?.name ?? 'No voice data', 84, 319, 23, { maxWidth: 150, fontFamily: DISPLAY_FONT_FAMILY });
+    text(ctx, normalizeCardText(topActivity?.voice?.name ?? 'No voice data'), 84, 319, 23, { maxWidth: 150, fontFamily: DISPLAY_FONT_FAMILY });
     text(ctx, `${formatHours(topActivity?.voice?.total ?? 0)} hours`, 244, 319, 20, { color: COLORS.text, weight: 500, maxWidth: 150 });
 
     text(ctx, '#', 25, 361, 20, { color: COLORS.violet });
-    text(ctx, topActivity?.messages?.name ?? 'No message data', 84, 361, 23, { maxWidth: 150, fontFamily: DISPLAY_FONT_FAMILY });
+    text(ctx, normalizeCardText(topActivity?.messages?.name ?? 'No message data'), 84, 361, 23, { maxWidth: 150, fontFamily: DISPLAY_FONT_FAMILY });
     text(ctx, formatMessageCount(topActivity?.messages?.total ?? 0), 244, 361, 20, { color: COLORS.text, weight: 500, maxWidth: 150 });
 
     text(ctx, '14d leaders', 84, 404, 19, { color: COLORS.muted, weight: 600, maxWidth: 150 });
@@ -425,7 +446,7 @@ function summaryRow(ctx, x, y, width, label, value) {
     strokeRound(ctx, x + 0.5, y + 0.5, width - 1, 33, 4.5, 'rgba(255, 255, 255, 0.62)');
     strokeRound(ctx, x + 0.5, y + 0.5, labelChipWidth - 1, 33, 4.5, 'rgba(255, 255, 255, 0.28)');
     text(ctx, label, x + 14, y + 23, 19, { maxWidth: labelChipWidth - 26 });
-    text(ctx, value, x + labelChipWidth + 20, y + 22, 20, { color: COLORS.text, weight: 500, maxWidth: width - labelChipWidth - 34, fontFamily: DISPLAY_FONT_FAMILY });
+    text(ctx, normalizeCardText(value), x + labelChipWidth + 20, y + 22, 20, { color: COLORS.text, weight: 500, maxWidth: width - labelChipWidth - 34, fontFamily: DISPLAY_FONT_FAMILY });
 }
 
 function formatDateTime(date) {
@@ -488,7 +509,7 @@ async function buildEventStatsCard({ guild, stats }) {
 
     panel(ctx, 12, 12, 830, 100);
     text(ctx, 'Post-Event Stats', 28, 46, 30, { maxWidth: 320 });
-    text(ctx, guild.name, 28, 74, 22, { color: COLORS.muted, weight: 500, maxWidth: 300, fontFamily: DISPLAY_FONT_FAMILY });
+    text(ctx, normalizeCardText(guild.name), 28, 74, 22, { color: COLORS.muted, weight: 500, maxWidth: 300, fontFamily: DISPLAY_FONT_FAMILY });
     eventDateBox(ctx, 434, 24, 190, 72, 'Started', startedDate, startedTime);
     eventDateBox(ctx, 638, 24, 190, 72, 'Ended', endedDate, endedTime);
 
@@ -524,7 +545,7 @@ async function buildHoursCard({ subject, guild, totals, messageTotals = {}, rank
 
     const canvas = createCanvas(WIDTH, HEIGHT);
     const ctx = canvas.getContext('2d');
-    const displayName = subject.displayName ?? subject.user.globalName ?? subject.user.username;
+    const displayName = normalizeCardText(subject.displayName ?? subject.user.globalName ?? subject.user.username);
 
     const background = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
     background.addColorStop(0, '#f7f9ff');
@@ -545,7 +566,7 @@ async function buildHoursCard({ subject, guild, totals, messageTotals = {}, rank
     await drawAvatar(ctx, subject, loadImage);
 
     text(ctx, displayName, 84, 35, 26, { maxWidth: 430, fontFamily: DISPLAY_FONT_FAMILY });
-    text(ctx, guild.name, 84, 61, 22, { color: COLORS.muted, weight: 500, maxWidth: 390, fontFamily: DISPLAY_FONT_FAMILY });
+    text(ctx, normalizeCardText(guild.name), 84, 61, 22, { color: COLORS.muted, weight: 500, maxWidth: 390, fontFamily: DISPLAY_FONT_FAMILY });
 
     dateBox(ctx, 546, 'Created On', formatDate(subject.user.createdAt));
     dateBox(ctx, 704, 'Joined On', formatDate(subject.joinedAt));
