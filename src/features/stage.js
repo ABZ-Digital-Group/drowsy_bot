@@ -15,6 +15,38 @@ const {
 } = require('@discordjs/voice');
 
 function createStageFeature({ config, state, helpers }) {
+    function getCountedStageMemberIds(voiceChannel) {
+        if (!voiceChannel?.members) return [];
+
+        return [...voiceChannel.members.values()]
+            .filter(member => !member.user.bot)
+            .map(member => member.id);
+    }
+
+    function syncAttendance(session, attendeeIds) {
+        const uniqueAttendeeIds = [...new Set(attendeeIds)];
+        session.peakAttendance = Math.max(session.peakAttendance, uniqueAttendeeIds.length);
+        for (const attendeeId of uniqueAttendeeIds) {
+            session.attendeeIds.add(attendeeId);
+        }
+    }
+
+    function buildStageStatsEmbed(session) {
+        const performerCount = session.performerIds.size;
+        const audienceCount = [...session.attendeeIds].filter(attendeeId => !session.performerIds.has(attendeeId)).length;
+
+        return new EmbedBuilder()
+            .setTitle('Event Stats')
+            .setColor(0x5865F2)
+            .addFields(
+                { name: 'Performers', value: `${performerCount}`, inline: true },
+                { name: 'Audience', value: `${audienceCount}`, inline: true },
+                { name: 'Songs Sung', value: `${session.songsSung}`, inline: true },
+                { name: 'Peak Attendance', value: `${session.peakAttendance}`, inline: true }
+            )
+            .setFooter({ text: session.startedAt ? `Started ${new Date(session.startedAt).toLocaleString()}` : 'Stage session ended' });
+    }
+
     function writeObsNowSinging(text, avatarUrl = null) {
         fs.writeFileSync(config.FILES.obsNowSinging, `${text}\n`, 'utf8');
         fs.writeFileSync(config.FILES.obsNowSingingJson, JSON.stringify({
@@ -135,6 +167,8 @@ function createStageFeature({ config, state, helpers }) {
     async function handleNextSpeaker(guild, session) {
         if (session.queue.length > 0) {
             session.currentSpeaker = session.queue.shift();
+            session.performerIds.add(session.currentSpeaker);
+            session.songsSung += 1;
             await announceCurrentSpeaker(guild, session);
             return;
         }
@@ -159,11 +193,22 @@ function createStageFeature({ config, state, helpers }) {
 
         const session = state.getGuildStageSession(channel.guild.id);
         session.targetVC = voiceChannelId;
+        session.startedAt = new Date().toISOString();
         session.panelChannelIds.add(channel.id);
+        const voiceChannel = channel.guild.channels.cache.get(voiceChannelId) ?? await channel.guild.channels.fetch(voiceChannelId).catch(() => null);
+        syncAttendance(session, getCountedStageMemberIds(voiceChannel));
         writeObsNowSinging('Open Mic');
         await refreshAllPanels(channel.guild, session);
         await startRadio(channel.guild, session);
         return { status: 'created', targetVC: session.targetVC };
+    }
+
+    async function updateAttendance(guild, voiceChannelId) {
+        const session = state.peekGuildStageSession(guild.id);
+        if (!session || session.targetVC !== voiceChannelId) return;
+
+        const voiceChannel = guild.channels.cache.get(voiceChannelId) ?? await guild.channels.fetch(voiceChannelId).catch(() => null);
+        syncAttendance(session, getCountedStageMemberIds(voiceChannel));
     }
 
     function getQueueEmbed(channel) {
@@ -211,6 +256,8 @@ function createStageFeature({ config, state, helpers }) {
         const session = state.peekGuildStageSession(channel.guild.id);
         if (!session) return { status: 'missing' };
 
+        await updateAttendance(channel.guild, session.targetVC);
+
         stopRadio(session);
         if (session.voiceConnection) session.voiceConnection.destroy();
 
@@ -229,8 +276,9 @@ function createStageFeature({ config, state, helpers }) {
         }
 
         writeObsNowSinging('Show Ended');
+        const statsEmbed = buildStageStatsEmbed(session);
         state.clearGuildStageSession(channel.guild.id);
-        return { status: 'stopped' };
+        return { status: 'stopped', statsEmbed };
     }
 
     async function handleButtonInteraction(interaction) {
@@ -305,6 +353,7 @@ function createStageFeature({ config, state, helpers }) {
         toggleRadio,
         setJoinState,
         stopStage,
+        updateAttendance,
         handleButtonInteraction,
     };
 }

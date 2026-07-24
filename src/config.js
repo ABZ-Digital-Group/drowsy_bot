@@ -20,6 +20,7 @@ module.exports = {
     MAX_PURGE_SCAN_LIMIT: 1000,
     OBS_HTTP_HOST: process.env.OBS_HTTP_HOST?.trim() || '0.0.0.0',
     OBS_HTTP_PORT: Number.isFinite(parsedObsHttpPort) ? parsedObsHttpPort : null,
+    POST_EVENT_STATS_CHANNEL_ID: '1229141305444012126',
     STAGE_ADMIN_ROLES: ['Guards', 'Knights', 'Drowsy Defenders', 'God'],
     DATA_DIR,
     ASSETS_DIR,

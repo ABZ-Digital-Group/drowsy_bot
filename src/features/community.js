@@ -1028,7 +1028,29 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 return;
             }
 
-            await interaction.editReply('Event finished. Connection closed.');
+            let statsPostedText = '';
+            if (result.statsEmbed && config.POST_EVENT_STATS_CHANNEL_ID) {
+                const statsChannel = interaction.guild.channels.cache.get(config.POST_EVENT_STATS_CHANNEL_ID)
+                    ?? await interaction.guild.channels.fetch(config.POST_EVENT_STATS_CHANNEL_ID).catch(() => null)
+                    ?? await client.channels.fetch(config.POST_EVENT_STATS_CHANNEL_ID).catch(() => null);
+
+                if (statsChannel?.isTextBased() && typeof statsChannel.send === 'function') {
+                    try {
+                        await statsChannel.send({ embeds: [result.statsEmbed] });
+                        statsPostedText = ` Stats posted in <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
+                    } catch (error) {
+                        console.error('Failed to post event stats:', error);
+                        statsPostedText = ` I could not post stats in <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
+                    }
+                } else {
+                    statsPostedText = ` I could not find a sendable channel for <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
+                }
+            }
+
+            await interaction.editReply({
+                content: `Event finished. Connection closed.${statsPostedText}`,
+                embeds: result.statsEmbed ? [result.statsEmbed] : [],
+            });
             return;
         }
 
@@ -1074,6 +1096,12 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const newChannelId = newState.channelId;
         const wasCounted = isCountedVoiceState(oldState);
         const isCounted = isCountedVoiceState(newState);
+        const activeStageSession = state.peekGuildStageSession(guild.id);
+        const touchedActiveStage = activeStageSession && (oldChannelId === activeStageSession.targetVC || newChannelId === activeStageSession.targetVC);
+
+        if (touchedActiveStage) {
+            await stageFeature.updateAttendance(guild, activeStageSession.targetVC);
+        }
 
         if (oldChannelId === newChannelId) {
             if (oldChannelId && wasCounted !== isCounted) {
