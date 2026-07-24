@@ -517,20 +517,20 @@ async function buildEventStatsCard({ guild, stats }) {
     drawEventStatTile(ctx, 298, 118, 260, 110, 'Audience', String(stats.audience ?? 0), ['#f26ca7', '#ffb38a']);
     drawEventStatTile(ctx, 576, 118, 254, 110, 'Peak Attendance', String(stats.peakAttendance ?? 0), ['#8c80ff', '#8ee0c5']);
 
-    panel(ctx, 20, 248, 492, 170);
+    panel(ctx, 20, 248, 452, 170);
     text(ctx, 'Event Summary', 34, 277, 23);
-    summaryRow(ctx, 34, 294, 464, 'Stage', stats.stageName ?? 'Unknown');
-    summaryRow(ctx, 34, 336, 464, 'Runtime', stats.runtimeText ?? 'Unknown');
-    summaryRow(ctx, 34, 378, 464, 'Report', 'Auto-generated');
+    summaryRow(ctx, 34, 294, 424, 'Stage', stats.stageName ?? 'Unknown');
+    summaryRow(ctx, 34, 336, 424, 'Runtime', stats.runtimeText ?? 'Unknown');
+    summaryRow(ctx, 34, 378, 424, 'Report', 'Auto-generated');
 
-    panel(ctx, 530, 248, 300, 170);
-    text(ctx, 'What Was Counted', 546, 277, 23);
-    text(ctx, 'Performers', 550, 315, 20, { color: COLORS.violet, weight: 700, maxWidth: 104 });
-    text(ctx, 'Unique members advanced on stage.', 654, 315, 18, { color: COLORS.muted, weight: 500, maxWidth: 150 });
-    text(ctx, 'Audience', 550, 350, 20, { color: COLORS.cyan, weight: 700, maxWidth: 104 });
-    text(ctx, 'Unique attendees who never performed.', 654, 350, 18, { color: COLORS.muted, weight: 500, maxWidth: 150 });
-    text(ctx, 'Peak', 550, 385, 20, { color: COLORS.pink, weight: 700, maxWidth: 104 });
-    text(ctx, 'Highest live headcount in the stage.', 654, 385, 18, { color: COLORS.muted, weight: 500, maxWidth: 150 });
+    panel(ctx, 490, 248, 340, 170);
+    text(ctx, 'What Was Counted', 506, 277, 23);
+    text(ctx, 'Performers', 510, 315, 20, { color: COLORS.violet, weight: 700, maxWidth: 110 });
+    text(ctx, 'Unique members advanced on stage.', 624, 315, 18, { color: COLORS.muted, weight: 500, maxWidth: 178 });
+    text(ctx, 'Audience', 510, 350, 20, { color: COLORS.cyan, weight: 700, maxWidth: 110 });
+    text(ctx, 'Unique attendees who never performed.', 624, 350, 18, { color: COLORS.muted, weight: 500, maxWidth: 178 });
+    text(ctx, 'Peak', 510, 385, 20, { color: COLORS.pink, weight: 700, maxWidth: 110 });
+    text(ctx, 'Highest live headcount in the stage.', 624, 385, 18, { color: COLORS.muted, weight: 500, maxWidth: 178 });
 
     text(ctx, 'Drowsy Bot', 24, 450, 17, { color: COLORS.text });
     text(ctx, 'Timezone: UTC', 734, 450, 17, { color: COLORS.muted });
