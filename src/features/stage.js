@@ -47,6 +47,30 @@ function createStageFeature({ config, state, helpers }) {
             .setFooter({ text: session.startedAt ? `Started ${new Date(session.startedAt).toLocaleString()}` : 'Stage session ended' });
     }
 
+    function buildStageStatsSummary(session, endedAt = new Date()) {
+        const performerCount = session.performerIds.size;
+        const audienceCount = [...session.attendeeIds].filter(attendeeId => !session.performerIds.has(attendeeId)).length;
+        const startedAt = session.startedAt ? new Date(session.startedAt) : null;
+        const runtimeMs = startedAt ? Math.max(0, endedAt.getTime() - startedAt.getTime()) : 0;
+        const runtimeMinutes = Math.floor(runtimeMs / 60000);
+        const runtimeHours = Math.floor(runtimeMinutes / 60);
+        const remainingMinutes = runtimeMinutes % 60;
+        const runtimeText = runtimeHours > 0
+            ? `${runtimeHours}h ${remainingMinutes}m`
+            : `${remainingMinutes}m`;
+
+        return {
+            performers: performerCount,
+            audience: audienceCount,
+            songsSung: session.songsSung,
+            peakAttendance: session.peakAttendance,
+            startedAt: session.startedAt,
+            endedAt: endedAt.toISOString(),
+            runtimeText,
+            stageName: session.targetVC ? `Voice Channel ${session.targetVC}` : 'Unknown stage',
+        };
+    }
+
     function writeObsNowSinging(text, avatarUrl = null) {
         fs.writeFileSync(config.FILES.obsNowSinging, `${text}\n`, 'utf8');
         fs.writeFileSync(config.FILES.obsNowSingingJson, JSON.stringify({
@@ -257,6 +281,15 @@ function createStageFeature({ config, state, helpers }) {
         if (!session) return { status: 'missing' };
 
         await updateAttendance(channel.guild, session.targetVC);
+        const endedAt = new Date();
+        const statsSummary = buildStageStatsSummary(session, endedAt);
+
+        if (session.targetVC) {
+            const stageChannel = channel.guild.channels.cache.get(session.targetVC) ?? await channel.guild.channels.fetch(session.targetVC).catch(() => null);
+            if (stageChannel?.name) {
+                statsSummary.stageName = stageChannel.name;
+            }
+        }
 
         stopRadio(session);
         if (session.voiceConnection) session.voiceConnection.destroy();
@@ -278,7 +311,7 @@ function createStageFeature({ config, state, helpers }) {
         writeObsNowSinging('Show Ended');
         const statsEmbed = buildStageStatsEmbed(session);
         state.clearGuildStageSession(channel.guild.id);
-        return { status: 'stopped', statsEmbed };
+        return { status: 'stopped', statsEmbed, statsSummary };
     }
 
     async function handleButtonInteraction(interaction) {

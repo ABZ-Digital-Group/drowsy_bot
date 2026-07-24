@@ -340,6 +340,95 @@ function drawChart(ctx, voiceTotals, messageTotals) {
     });
 }
 
+function drawEventStatTile(ctx, x, y, width, height, label, value, accentColors) {
+    const tileGradient = ctx.createLinearGradient(x, y, x + width, y + height);
+    tileGradient.addColorStop(0, accentColors[0]);
+    tileGradient.addColorStop(1, accentColors[1]);
+    fillRound(ctx, x, y, width, height, 12, tileGradient);
+    fillClippedRound(ctx, x, y, width, height, 12, () => {
+        const glow = ctx.createRadialGradient(x + 28, y + 20, 0, x + 28, y + 20, width * 0.9);
+        glow.addColorStop(0, 'rgba(255, 255, 255, 0.22)');
+        glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(x, y, width, height);
+    });
+    strokeRound(ctx, x + 0.5, y + 0.5, width - 1, height - 1, 11.5, 'rgba(255, 255, 255, 0.28)');
+    text(ctx, label, x + 16, y + 31, 18, { color: '#f6f8ff', weight: 600, maxWidth: width - 32 });
+    text(ctx, value, x + 16, y + 78, 36, { color: '#ffffff', weight: 700, maxWidth: width - 32 });
+}
+
+function formatDateTime(date) {
+    if (!date) return 'Unknown';
+
+    return new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'UTC',
+    }).format(date);
+}
+
+async function buildEventStatsCard({ guild, stats }) {
+    const { createCanvas, GlobalFonts } = require('@napi-rs/canvas');
+    registerSatoshiFont(GlobalFonts);
+
+    const canvas = createCanvas(WIDTH, HEIGHT);
+    const ctx = canvas.getContext('2d');
+    const startedAt = stats.startedAt ? new Date(stats.startedAt) : null;
+    const endedAt = stats.endedAt ? new Date(stats.endedAt) : null;
+
+    const background = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
+    background.addColorStop(0, '#f7f9ff');
+    background.addColorStop(0.45, '#e7edff');
+    background.addColorStop(1, '#d8e2ff');
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    const aura = ctx.createRadialGradient(140, 74, 0, 140, 74, 430);
+    aura.addColorStop(0, 'rgba(124, 114, 255, 0.2)');
+    aura.addColorStop(0.48, 'rgba(104, 199, 255, 0.14)');
+    aura.addColorStop(0.8, 'rgba(255, 179, 138, 0.12)');
+    aura.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = aura;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    fillRound(ctx, 0, 0, WIDTH, HEIGHT, 18, 'rgba(255, 255, 255, 0.08)');
+
+    panel(ctx, 12, 12, 830, 88);
+    text(ctx, 'Post-Event Stats', 28, 46, 30, { maxWidth: 320 });
+    text(ctx, guild.name, 28, 74, 22, { color: COLORS.muted, weight: 500, maxWidth: 300 });
+    dateBox(ctx, 548, 'Started', formatDateTime(startedAt));
+    dateBox(ctx, 704, 'Ended', formatDateTime(endedAt));
+
+    drawEventStatTile(ctx, 20, 118, 192, 110, 'Performers', String(stats.performers ?? 0), ['#7c72ff', '#68c7ff']);
+    drawEventStatTile(ctx, 226, 118, 192, 110, 'Audience', String(stats.audience ?? 0), ['#f26ca7', '#ffb38a']);
+    drawEventStatTile(ctx, 432, 118, 192, 110, 'Songs Sung', String(stats.songsSung ?? 0), ['#29c7a7', '#68c7ff']);
+    drawEventStatTile(ctx, 638, 118, 192, 110, 'Peak Attendance', String(stats.peakAttendance ?? 0), ['#8c80ff', '#8ee0c5']);
+
+    panel(ctx, 20, 248, 388, 170);
+    text(ctx, 'Event Summary', 34, 277, 23);
+    statRow(ctx, 34, 294, 'Stage', stats.stageName ?? 'Unknown');
+    statRow(ctx, 34, 336, 'Runtime', stats.runtimeText ?? 'Unknown');
+    statRow(ctx, 34, 378, 'Report', 'Auto-generated');
+
+    panel(ctx, 426, 248, 404, 170);
+    text(ctx, 'What Was Counted', 442, 277, 23);
+    text(ctx, 'Performers', 446, 315, 20, { color: COLORS.violet, weight: 700, maxWidth: 120 });
+    text(ctx, 'Unique members advanced on stage.', 566, 315, 18, { color: COLORS.muted, weight: 500, maxWidth: 232 });
+    text(ctx, 'Audience', 446, 350, 20, { color: COLORS.cyan, weight: 700, maxWidth: 120 });
+    text(ctx, 'Unique attendees who never performed.', 566, 350, 18, { color: COLORS.muted, weight: 500, maxWidth: 232 });
+    text(ctx, 'Songs / Peak', 446, 385, 20, { color: COLORS.pink, weight: 700, maxWidth: 120 });
+    text(ctx, 'Speaker turns and highest live headcount.', 566, 385, 18, { color: COLORS.muted, weight: 500, maxWidth: 232 });
+
+    text(ctx, 'Drowsy Bot', 24, 450, 17, { color: COLORS.text });
+    text(ctx, 'Timezone: UTC', 734, 450, 17, { color: COLORS.muted });
+
+    return canvas.toBuffer('image/png');
+}
+
 async function buildHoursCard({ subject, guild, totals, messageTotals = {}, ranks = {}, topActivity = {} }) {
     const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
     registerSatoshiFont(GlobalFonts);
@@ -384,4 +473,4 @@ async function buildHoursCard({ subject, guild, totals, messageTotals = {}, rank
     return canvas.toBuffer('image/png');
 }
 
-module.exports = { buildHoursCard };
+module.exports = { buildHoursCard, buildEventStatsCard };

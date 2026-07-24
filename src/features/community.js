@@ -9,7 +9,7 @@ const {
     PermissionFlagsBits,
 } = require('discord.js');
 
-const { buildHoursCard } = require('../hour-card');
+const { buildHoursCard, buildEventStatsCard } = require('../hour-card');
 
 const IMAGE_CONTENT_TYPE_EXTENSIONS = {
     'image/gif': '.gif',
@@ -1036,7 +1036,9 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
                 if (statsChannel?.isTextBased() && typeof statsChannel.send === 'function') {
                     try {
-                        await statsChannel.send({ embeds: [result.statsEmbed] });
+                        const statsCard = await buildEventStatsCard({ guild: interaction.guild, stats: result.statsSummary });
+                        const attachment = new AttachmentBuilder(statsCard, { name: 'post-event-stats.png' });
+                        await statsChannel.send({ files: [attachment] });
                         statsPostedText = ` Stats posted in <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
                     } catch (error) {
                         console.error('Failed to post event stats:', error);
