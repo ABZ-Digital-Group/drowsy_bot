@@ -212,6 +212,51 @@ function text(ctx, value, x, y, size, options = {}) {
     ctx.restore();
 }
 
+function wrappedText(ctx, value, x, y, size, options = {}) {
+    ctx.save();
+    ctx.fillStyle = options.color ?? COLORS.text;
+    ctx.font = `${options.weight ?? 700} ${size}px ${options.fontFamily ?? FONT_FAMILY}`;
+    ctx.textBaseline = options.baseline ?? 'alphabetic';
+
+    const maxWidth = options.maxWidth ?? Number.POSITIVE_INFINITY;
+    const lineHeight = options.lineHeight ?? Math.round(size * 1.25);
+    const maxLines = options.maxLines ?? Number.POSITIVE_INFINITY;
+    const words = String(value).split(/\s+/).filter(Boolean);
+    const lines = [];
+    let currentLine = '';
+
+    for (const word of words) {
+        const nextLine = currentLine ? `${currentLine} ${word}` : word;
+        if (ctx.measureText(nextLine).width <= maxWidth || !currentLine) {
+            currentLine = nextLine;
+            continue;
+        }
+
+        lines.push(currentLine);
+        currentLine = word;
+        if (lines.length >= maxLines) break;
+    }
+
+    if (lines.length < maxLines && currentLine) {
+        lines.push(currentLine);
+    }
+
+    const renderedLines = lines.slice(0, maxLines);
+    if (lines.length > maxLines && renderedLines.length > 0) {
+        let lastLine = renderedLines[renderedLines.length - 1];
+        while (ctx.measureText(`${lastLine}...`).width > maxWidth && lastLine.length > 0) {
+            lastLine = lastLine.slice(0, -1);
+        }
+        renderedLines[renderedLines.length - 1] = `${lastLine}...`;
+    }
+
+    renderedLines.forEach((line, index) => {
+        ctx.fillText(line, x, y + (index * lineHeight));
+    });
+
+    ctx.restore();
+}
+
 function normalizeCardText(value) {
     if (value === null || value === undefined) return '';
 
@@ -526,11 +571,11 @@ async function buildEventStatsCard({ guild, stats }) {
     panel(ctx, 490, 248, 340, 170);
     text(ctx, 'What Was Counted', 506, 277, 23);
     text(ctx, 'Performers', 510, 315, 20, { color: COLORS.violet, weight: 700, maxWidth: 110 });
-    text(ctx, 'Unique members advanced on stage.', 624, 315, 18, { color: COLORS.muted, weight: 500, maxWidth: 178 });
+    wrappedText(ctx, 'Unique members advanced on stage.', 624, 311, 16, { color: COLORS.muted, weight: 500, maxWidth: 178, lineHeight: 18, maxLines: 2 });
     text(ctx, 'Audience', 510, 350, 20, { color: COLORS.cyan, weight: 700, maxWidth: 110 });
-    text(ctx, 'Unique attendees who never performed.', 624, 350, 18, { color: COLORS.muted, weight: 500, maxWidth: 178 });
+    wrappedText(ctx, 'Unique attendees who never performed.', 624, 346, 16, { color: COLORS.muted, weight: 500, maxWidth: 178, lineHeight: 18, maxLines: 2 });
     text(ctx, 'Peak', 510, 385, 20, { color: COLORS.pink, weight: 700, maxWidth: 110 });
-    text(ctx, 'Highest live headcount in the stage.', 624, 385, 18, { color: COLORS.muted, weight: 500, maxWidth: 178 });
+    wrappedText(ctx, 'Highest live headcount in the stage.', 624, 381, 16, { color: COLORS.muted, weight: 500, maxWidth: 178, lineHeight: 18, maxLines: 2 });
 
     text(ctx, 'Drowsy Bot', 24, 450, 17, { color: COLORS.text });
     text(ctx, 'Timezone: UTC', 734, 450, 17, { color: COLORS.muted });
