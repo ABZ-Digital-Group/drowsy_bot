@@ -4,7 +4,9 @@ const path = require('path');
 const WIDTH = 856;
 const HEIGHT = 464;
 const FONT_FAMILY = '"Satoshi", "Segoe UI", Arial, sans-serif';
+const DISPLAY_FONT_FAMILY = '"Satoshi", "Segoe UI Emoji", "Segoe UI Symbol", "Segoe UI", Arial, sans-serif';
 let satoshiRegistered = false;
+let symbolFontsRegistered = false;
 
 const COLORS = {
     page: '#f3f6ff',
@@ -72,6 +74,37 @@ function registerSatoshiFont(GlobalFonts) {
     }
 
     satoshiRegistered = registeredAny;
+}
+
+function getSymbolFontSearchPaths() {
+    const windowsFontsDir = process.env.WINDIR ? path.join(process.env.WINDIR, 'Fonts') : null;
+    const candidates = [
+        windowsFontsDir ? path.join(windowsFontsDir, 'seguiemj.ttf') : null,
+        windowsFontsDir ? path.join(windowsFontsDir, 'seguisym.ttf') : null,
+        windowsFontsDir ? path.join(windowsFontsDir, 'segoeui.ttf') : null,
+    ];
+
+    return candidates.filter(Boolean);
+}
+
+function registerSymbolFonts(GlobalFonts) {
+    if (symbolFontsRegistered || !GlobalFonts?.registerFromPath) return;
+
+    let registeredAny = false;
+    for (const fontPath of getSymbolFontSearchPaths()) {
+        if (!fs.existsSync(fontPath)) continue;
+
+        const lowerPath = fontPath.toLowerCase();
+        const familyName = lowerPath.endsWith('seguiemj.ttf')
+            ? 'Segoe UI Emoji'
+            : lowerPath.endsWith('seguisym.ttf')
+                ? 'Segoe UI Symbol'
+                : 'Segoe UI';
+
+        registeredAny = GlobalFonts.registerFromPath(fontPath, familyName) || registeredAny;
+    }
+
+    symbolFontsRegistered = registeredAny;
 }
 
 function formatHours(milliseconds) {
@@ -157,7 +190,7 @@ function panel(ctx, x, y, width, height) {
 function text(ctx, value, x, y, size, options = {}) {
     ctx.save();
     ctx.fillStyle = options.color ?? COLORS.text;
-    ctx.font = `${options.weight ?? 700} ${size}px ${FONT_FAMILY}`;
+    ctx.font = `${options.weight ?? 700} ${size}px ${options.fontFamily ?? FONT_FAMILY}`;
     ctx.textBaseline = options.baseline ?? 'alphabetic';
 
     if (options.maxWidth) {
@@ -306,11 +339,11 @@ function drawTopChannels(ctx, topActivity) {
     fillRound(ctx, 64, 378, 346, 34, 5, COLORS.panelDark);
 
     text(ctx, '🔊', 27, 320, 20, { color: COLORS.cyan });
-    text(ctx, topActivity?.voice?.name ?? 'No voice data', 84, 319, 23, { maxWidth: 150 });
+    text(ctx, topActivity?.voice?.name ?? 'No voice data', 84, 319, 23, { maxWidth: 150, fontFamily: DISPLAY_FONT_FAMILY });
     text(ctx, `${formatHours(topActivity?.voice?.total ?? 0)} hours`, 244, 319, 20, { color: COLORS.text, weight: 500, maxWidth: 150 });
 
     text(ctx, '#', 25, 361, 20, { color: COLORS.violet });
-    text(ctx, topActivity?.messages?.name ?? 'No message data', 84, 361, 23, { maxWidth: 150 });
+    text(ctx, topActivity?.messages?.name ?? 'No message data', 84, 361, 23, { maxWidth: 150, fontFamily: DISPLAY_FONT_FAMILY });
     text(ctx, formatMessageCount(topActivity?.messages?.total ?? 0), 244, 361, 20, { color: COLORS.text, weight: 500, maxWidth: 150 });
 
     text(ctx, '14d leaders', 84, 404, 19, { color: COLORS.muted, weight: 600, maxWidth: 150 });
@@ -392,7 +425,7 @@ function summaryRow(ctx, x, y, width, label, value) {
     strokeRound(ctx, x + 0.5, y + 0.5, width - 1, 33, 4.5, 'rgba(255, 255, 255, 0.62)');
     strokeRound(ctx, x + 0.5, y + 0.5, labelChipWidth - 1, 33, 4.5, 'rgba(255, 255, 255, 0.28)');
     text(ctx, label, x + 14, y + 23, 19, { maxWidth: labelChipWidth - 26 });
-    text(ctx, value, x + labelChipWidth + 20, y + 22, 20, { color: COLORS.text, weight: 500, maxWidth: width - labelChipWidth - 34 });
+    text(ctx, value, x + labelChipWidth + 20, y + 22, 20, { color: COLORS.text, weight: 500, maxWidth: width - labelChipWidth - 34, fontFamily: DISPLAY_FONT_FAMILY });
 }
 
 function formatDateTime(date) {
@@ -427,6 +460,7 @@ function splitDateTimeParts(value) {
 async function buildEventStatsCard({ guild, stats }) {
     const { createCanvas, GlobalFonts } = require('@napi-rs/canvas');
     registerSatoshiFont(GlobalFonts);
+    registerSymbolFonts(GlobalFonts);
 
     const canvas = createCanvas(WIDTH, HEIGHT);
     const ctx = canvas.getContext('2d');
@@ -454,7 +488,7 @@ async function buildEventStatsCard({ guild, stats }) {
 
     panel(ctx, 12, 12, 830, 100);
     text(ctx, 'Post-Event Stats', 28, 46, 30, { maxWidth: 320 });
-    text(ctx, guild.name, 28, 74, 22, { color: COLORS.muted, weight: 500, maxWidth: 300 });
+    text(ctx, guild.name, 28, 74, 22, { color: COLORS.muted, weight: 500, maxWidth: 300, fontFamily: DISPLAY_FONT_FAMILY });
     eventDateBox(ctx, 434, 24, 190, 72, 'Started', startedDate, startedTime);
     eventDateBox(ctx, 638, 24, 190, 72, 'Ended', endedDate, endedTime);
 
@@ -486,6 +520,7 @@ async function buildEventStatsCard({ guild, stats }) {
 async function buildHoursCard({ subject, guild, totals, messageTotals = {}, ranks = {}, topActivity = {} }) {
     const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
     registerSatoshiFont(GlobalFonts);
+    registerSymbolFonts(GlobalFonts);
 
     const canvas = createCanvas(WIDTH, HEIGHT);
     const ctx = canvas.getContext('2d');
@@ -509,8 +544,8 @@ async function buildHoursCard({ subject, guild, totals, messageTotals = {}, rank
     fillRound(ctx, 0, 0, WIDTH, HEIGHT, 18, 'rgba(255, 255, 255, 0.08)');
     await drawAvatar(ctx, subject, loadImage);
 
-    text(ctx, displayName, 84, 35, 26, { maxWidth: 430 });
-    text(ctx, guild.name, 84, 61, 22, { color: COLORS.muted, weight: 500, maxWidth: 390 });
+    text(ctx, displayName, 84, 35, 26, { maxWidth: 430, fontFamily: DISPLAY_FONT_FAMILY });
+    text(ctx, guild.name, 84, 61, 22, { color: COLORS.muted, weight: 500, maxWidth: 390, fontFamily: DISPLAY_FONT_FAMILY });
 
     dateBox(ctx, 546, 'Created On', formatDate(subject.user.createdAt));
     dateBox(ctx, 704, 'Joined On', formatDate(subject.joinedAt));
