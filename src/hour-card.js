@@ -251,6 +251,24 @@ function dateBox(ctx, x, label, value) {
     text(ctx, value, x + 12, 57, 20, { color: COLORS.muted, weight: 500, maxWidth: 114 });
 }
 
+function eventDateBox(ctx, x, y, width, height, label, primaryValue, secondaryValue) {
+    const gradient = ctx.createLinearGradient(x, y, x, y + height);
+    gradient.addColorStop(0, '#f7f9ff');
+    gradient.addColorStop(1, '#dfe7ff');
+    fillRound(ctx, x, y, width, height, 9, gradient);
+    fillClippedRound(ctx, x, y, width, height, 9, () => {
+        const highlight = ctx.createLinearGradient(x, y, x, y + (height * 0.42));
+        highlight.addColorStop(0, 'rgba(255, 255, 255, 0.5)');
+        highlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = highlight;
+        ctx.fillRect(x, y, width, height * 0.42);
+    });
+    strokeRound(ctx, x + 0.5, y + 0.5, width - 1, height - 1, 8.5, 'rgba(255, 255, 255, 0.65)');
+    text(ctx, label, x + 12, y + 24, 16, { color: COLORS.text, maxWidth: width - 24 });
+    text(ctx, primaryValue, x + 12, y + 48, 17, { color: COLORS.muted, weight: 600, maxWidth: width - 24 });
+    text(ctx, secondaryValue, x + 12, y + 68, 16, { color: COLORS.muted, weight: 500, maxWidth: width - 24 });
+}
+
 function formatRank(rankInfo) {
     if (!rankInfo?.rank) return 'Unranked';
     return `#${rankInfo.rank}`;
@@ -357,6 +375,24 @@ function drawEventStatTile(ctx, x, y, width, height, label, value, accentColors)
     text(ctx, value, x + 16, y + 78, 36, { color: '#ffffff', weight: 700, maxWidth: width - 32 });
 }
 
+function summaryRow(ctx, x, y, width, label, value) {
+    const rowGradient = ctx.createLinearGradient(x, y, x, y + 34);
+    rowGradient.addColorStop(0, '#f4f7ff');
+    rowGradient.addColorStop(1, '#dde6ff');
+    fillRound(ctx, x, y, width, 34, 5, rowGradient);
+
+    const chipGradient = ctx.createLinearGradient(x, y, x, y + 34);
+    chipGradient.addColorStop(0, '#8c80ff');
+    chipGradient.addColorStop(0.5, '#68c7ff');
+    chipGradient.addColorStop(1, '#8ee0c5');
+    fillRound(ctx, x, y, 84, 34, 5, chipGradient);
+
+    strokeRound(ctx, x + 0.5, y + 0.5, width - 1, 33, 4.5, 'rgba(255, 255, 255, 0.62)');
+    strokeRound(ctx, x + 0.5, y + 0.5, 83, 33, 4.5, 'rgba(255, 255, 255, 0.28)');
+    text(ctx, label, x + 17, y + 23, 22, { maxWidth: 66 });
+    text(ctx, value, x + 104, y + 22, 20, { color: COLORS.text, weight: 500, maxWidth: width - 122 });
+}
+
 function formatDateTime(date) {
     if (!date) return 'Unknown';
 
@@ -366,9 +402,24 @@ function formatDateTime(date) {
         year: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
+        second: '2-digit',
         hour12: true,
         timeZone: 'UTC',
+        timeZoneName: 'short',
     }).format(date);
+}
+
+function splitDateTimeParts(value) {
+    if (!value || value === 'Unknown') {
+        return ['Unknown', ''];
+    }
+
+    const parts = String(value).split(', ');
+    if (parts.length < 3) {
+        return [String(value), ''];
+    }
+
+    return [`${parts[0]}, ${parts[1]}`, parts.slice(2).join(', ')];
 }
 
 async function buildEventStatsCard({ guild, stats }) {
@@ -379,6 +430,8 @@ async function buildEventStatsCard({ guild, stats }) {
     const ctx = canvas.getContext('2d');
     const startedAt = stats.startedAt ? new Date(stats.startedAt) : null;
     const endedAt = stats.endedAt ? new Date(stats.endedAt) : null;
+    const [startedDate, startedTime] = splitDateTimeParts(formatDateTime(startedAt));
+    const [endedDate, endedTime] = splitDateTimeParts(formatDateTime(endedAt));
 
     const background = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
     background.addColorStop(0, '#f7f9ff');
@@ -397,31 +450,30 @@ async function buildEventStatsCard({ guild, stats }) {
 
     fillRound(ctx, 0, 0, WIDTH, HEIGHT, 18, 'rgba(255, 255, 255, 0.08)');
 
-    panel(ctx, 12, 12, 830, 88);
+    panel(ctx, 12, 12, 830, 100);
     text(ctx, 'Post-Event Stats', 28, 46, 30, { maxWidth: 320 });
     text(ctx, guild.name, 28, 74, 22, { color: COLORS.muted, weight: 500, maxWidth: 300 });
-    dateBox(ctx, 548, 'Started', formatDateTime(startedAt));
-    dateBox(ctx, 704, 'Ended', formatDateTime(endedAt));
+    eventDateBox(ctx, 434, 24, 190, 72, 'Started', startedDate, startedTime);
+    eventDateBox(ctx, 638, 24, 190, 72, 'Ended', endedDate, endedTime);
 
-    drawEventStatTile(ctx, 20, 118, 192, 110, 'Performers', String(stats.performers ?? 0), ['#7c72ff', '#68c7ff']);
-    drawEventStatTile(ctx, 226, 118, 192, 110, 'Audience', String(stats.audience ?? 0), ['#f26ca7', '#ffb38a']);
-    drawEventStatTile(ctx, 432, 118, 192, 110, 'Songs Sung', String(stats.songsSung ?? 0), ['#29c7a7', '#68c7ff']);
-    drawEventStatTile(ctx, 638, 118, 192, 110, 'Peak Attendance', String(stats.peakAttendance ?? 0), ['#8c80ff', '#8ee0c5']);
+    drawEventStatTile(ctx, 20, 118, 260, 110, 'Performers', String(stats.performers ?? 0), ['#7c72ff', '#68c7ff']);
+    drawEventStatTile(ctx, 298, 118, 260, 110, 'Audience', String(stats.audience ?? 0), ['#f26ca7', '#ffb38a']);
+    drawEventStatTile(ctx, 576, 118, 254, 110, 'Peak Attendance', String(stats.peakAttendance ?? 0), ['#8c80ff', '#8ee0c5']);
 
-    panel(ctx, 20, 248, 388, 170);
+    panel(ctx, 20, 248, 492, 170);
     text(ctx, 'Event Summary', 34, 277, 23);
-    statRow(ctx, 34, 294, 'Stage', stats.stageName ?? 'Unknown');
-    statRow(ctx, 34, 336, 'Runtime', stats.runtimeText ?? 'Unknown');
-    statRow(ctx, 34, 378, 'Report', 'Auto-generated');
+    summaryRow(ctx, 34, 294, 464, 'Stage', stats.stageName ?? 'Unknown');
+    summaryRow(ctx, 34, 336, 464, 'Runtime', stats.runtimeText ?? 'Unknown');
+    summaryRow(ctx, 34, 378, 464, 'Report', 'Auto-generated');
 
-    panel(ctx, 426, 248, 404, 170);
-    text(ctx, 'What Was Counted', 442, 277, 23);
-    text(ctx, 'Performers', 446, 315, 20, { color: COLORS.violet, weight: 700, maxWidth: 120 });
-    text(ctx, 'Unique members advanced on stage.', 566, 315, 18, { color: COLORS.muted, weight: 500, maxWidth: 232 });
-    text(ctx, 'Audience', 446, 350, 20, { color: COLORS.cyan, weight: 700, maxWidth: 120 });
-    text(ctx, 'Unique attendees who never performed.', 566, 350, 18, { color: COLORS.muted, weight: 500, maxWidth: 232 });
-    text(ctx, 'Songs / Peak', 446, 385, 20, { color: COLORS.pink, weight: 700, maxWidth: 120 });
-    text(ctx, 'Speaker turns and highest live headcount.', 566, 385, 18, { color: COLORS.muted, weight: 500, maxWidth: 232 });
+    panel(ctx, 530, 248, 300, 170);
+    text(ctx, 'What Was Counted', 546, 277, 23);
+    text(ctx, 'Performers', 550, 315, 20, { color: COLORS.violet, weight: 700, maxWidth: 104 });
+    text(ctx, 'Unique members advanced on stage.', 654, 315, 18, { color: COLORS.muted, weight: 500, maxWidth: 150 });
+    text(ctx, 'Audience', 550, 350, 20, { color: COLORS.cyan, weight: 700, maxWidth: 104 });
+    text(ctx, 'Unique attendees who never performed.', 654, 350, 18, { color: COLORS.muted, weight: 500, maxWidth: 150 });
+    text(ctx, 'Peak', 550, 385, 20, { color: COLORS.pink, weight: 700, maxWidth: 104 });
+    text(ctx, 'Highest live headcount in the stage.', 654, 385, 18, { color: COLORS.muted, weight: 500, maxWidth: 150 });
 
     text(ctx, 'Drowsy Bot', 24, 450, 17, { color: COLORS.text });
     text(ctx, 'Timezone: UTC', 734, 450, 17, { color: COLORS.muted });
