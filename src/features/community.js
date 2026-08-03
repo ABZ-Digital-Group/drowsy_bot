@@ -230,23 +230,27 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         if (stageChannels.length < shyStageAlwaysVisibleCount) return;
 
         const categoryId = getShyStageCategoryId(stageChannels);
-        const lastStageEntry = stageChannels[stageChannels.length - 1];
+        const stageState = stageChannels.map(entry => ({
+            ...entry,
+            memberCount: entry.channel.members.filter(member => !member.user.bot).size,
+        }));
 
-        for (const entry of stageChannels) {
+        const visibleStageEntries = stageState.filter(entry => entry.index <= shyStageAlwaysVisibleCount || entry.memberCount > 0);
+        const lastVisibleEntry = visibleStageEntries[visibleStageEntries.length - 1] ?? null;
+
+        for (const entry of stageState) {
             const shouldAlwaysBeVisible = entry.index <= shyStageAlwaysVisibleCount;
-            const memberCount = entry.channel.members.filter(member => !member.user.bot).size;
-            const shouldBeVisible = shouldAlwaysBeVisible || memberCount > 0;
+            const shouldBeVisible = shouldAlwaysBeVisible || entry.memberCount > 0;
             await setShyStageVisibility(entry.channel, shouldBeVisible);
         }
 
         if (changedChannelId) {
-            const changedEntry = stageChannels.find(entry => entry.channel.id === changedChannelId);
-            if (changedEntry) {
-                const changedMemberCount = changedEntry.channel.members.filter(member => !member.user.bot).size;
-                const isLastVisibleSlot = changedEntry.index === lastStageEntry.index;
-                if (changedMemberCount === 1 && isLastVisibleSlot) {
+            const changedEntry = stageState.find(entry => entry.channel.id === changedChannelId);
+            if (changedEntry && lastVisibleEntry) {
+                const isLastVisibleSlot = changedEntry.index === lastVisibleEntry.index;
+                if (changedEntry.memberCount === 1 && isLastVisibleSlot) {
                     const nextIndex = changedEntry.index + 1;
-                    const existingNext = stageChannels.find(entry => entry.index === nextIndex)?.channel
+                    const existingNext = stageState.find(entry => entry.index === nextIndex)?.channel
                         ?? await createShyStageChannel(guild, nextIndex, categoryId, changedEntry.channel);
 
                     await setShyStageVisibility(existingNext, false);
