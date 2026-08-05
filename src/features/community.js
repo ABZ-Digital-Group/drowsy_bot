@@ -344,6 +344,11 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             return true;
         }
 
+        if (!lifecycleState.firstOccupantUserId) {
+            const firstOccupant = channel.members.find(member => !member.user.bot) ?? null;
+            lifecycleState.firstOccupantUserId = firstOccupant?.id ?? null;
+        }
+
         if (interaction.user.id !== lifecycleState.firstOccupantUserId) {
             await interaction.reply(helpers.privateReply('Only the first person who joined this room can set its member limit.'));
             return true;
@@ -432,7 +437,8 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     async function announceShyStageOpened(channel) {
         const lifecycleState = getShyStageLifecycleState(channel);
         const openMessage = await postShyStageSideChatMessage(channel, {
-            content: `<#${channel.id}> is now open. Member limit: ${shyStageUserLimit}.`,
+            content: `Set room cap size for <#${channel.id}>. This can only be chosen once for this room.`,
+            components: buildShyStageLimitButtons(channel.id),
         }, { allowSiblingFallback: false }).catch(error => {
             console.error(`Failed to announce shy stage opening for ${channel.id}:`, error);
             return null;
@@ -442,6 +448,8 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
         lifecycleState.openNoticeMessageId = openMessage.id;
         lifecycleState.openNoticeChannelId = openMessage.channel_id ?? channel.id;
+        lifecycleState.limitPromptMessageId = openMessage.id;
+        lifecycleState.limitPromptChannelId = openMessage.channel_id ?? channel.id;
     }
 
     async function syncShyStageRooms(guild, changedChannelId = null) {
