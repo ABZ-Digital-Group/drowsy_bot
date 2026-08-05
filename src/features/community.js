@@ -97,7 +97,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     }
 
     function parseShyStageIndex(channelName) {
-        const match = new RegExp(`^${escapeRegExp(shyStageBaseName)}\\s+([ivxlcdm]+|\\d+)$`, 'i').exec(channelName?.trim() ?? '');
+        const match = new RegExp(`^(?:[^a-z0-9]+\\s*)?${escapeRegExp(shyStageBaseName)}\\s+([ivxlcdm]+|\\d+)$`, 'i').exec(channelName?.trim() ?? '');
         if (!match) return null;
 
         const indexToken = match[1].toUpperCase();
