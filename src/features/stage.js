@@ -235,6 +235,35 @@ function createStageFeature({ config, state, helpers }) {
         syncAttendance(session, getCountedStageMemberIds(voiceChannel));
     }
 
+    async function registerSpeakerPromotion(guild, voiceChannelId, memberId) {
+        const session = state.peekGuildStageSession(guild.id);
+        if (!session || session.targetVC !== voiceChannelId) return { status: 'missing' };
+
+        if (!session.performerIds.has(memberId)) {
+            session.performerIds.add(memberId);
+        }
+
+        if (session.currentSpeaker !== memberId) {
+            session.currentSpeaker = memberId;
+            session.songsSung += 1;
+            await announceCurrentSpeaker(guild, session);
+            await refreshAllPanels(guild, session);
+            return { status: 'ok', currentSpeaker: session.currentSpeaker, announced: true };
+        }
+
+        return { status: 'ok', currentSpeaker: session.currentSpeaker, announced: false };
+    }
+
+    async function registerSpeakerDemotion(guild, voiceChannelId, memberId) {
+        const session = state.peekGuildStageSession(guild.id);
+        if (!session || session.targetVC !== voiceChannelId) return { status: 'missing' };
+        if (session.currentSpeaker !== memberId) return { status: 'ok', cleared: false, currentSpeaker: session.currentSpeaker };
+
+        await handleNextSpeaker(guild, session);
+        await refreshAllPanels(guild, session);
+        return { status: 'ok', cleared: true, currentSpeaker: session.currentSpeaker };
+    }
+
     function getQueueEmbed(channel) {
         const session = state.peekGuildStageSession(channel.guild.id);
         if (!session) return { status: 'missing' };
@@ -448,6 +477,8 @@ function createStageFeature({ config, state, helpers }) {
         setJoinState,
         stopStage,
         updateAttendance,
+        registerSpeakerPromotion,
+        registerSpeakerDemotion,
         handleButtonInteraction,
     };
 }

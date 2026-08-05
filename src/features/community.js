@@ -761,6 +761,54 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         }
     }
 
+    async function postStageStatsCard(guild, statsSummary) {
+        if (!statsSummary || !config.POST_EVENT_STATS_CHANNEL_ID) return '';
+
+        const statsChannel = guild.channels.cache.get(config.POST_EVENT_STATS_CHANNEL_ID)
+            ?? await guild.channels.fetch(config.POST_EVENT_STATS_CHANNEL_ID).catch(() => null)
+            ?? await client.channels.fetch(config.POST_EVENT_STATS_CHANNEL_ID).catch(() => null);
+
+        if (!statsChannel?.isTextBased() || typeof statsChannel.send !== 'function') {
+            return ` I could not find a sendable channel for <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
+        }
+
+        try {
+            const statsCard = await buildEventStatsCard({ guild, stats: statsSummary });
+            const attachment = new AttachmentBuilder(statsCard, { name: 'post-event-stats.png' });
+            await statsChannel.send({ files: [attachment] });
+            return ` Stats posted in <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
+        } catch (error) {
+            console.error('Failed to post event stats:', error);
+            return ` I could not post stats in <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
+        }
+    }
+
+    async function concludeStageSession(guild, controlChannel, options = {}) {
+        const session = state.peekGuildStageSession(guild.id);
+        if (!session) return { status: 'missing', statsPostedText: '' };
+
+        const panelChannelIds = [...session.panelChannelIds];
+        const result = await stageFeature.stopStage(controlChannel);
+        if (result.status === 'missing') return { status: 'missing', statsPostedText: '' };
+
+        const statsPostedText = await postStageStatsCard(guild, result.statsSummary);
+
+        if (options.notifyPanels) {
+            const notification = {
+                content: `Event finished automatically because <#${session.targetVC}> is now empty.${statsPostedText}`,
+                embeds: result.statsEmbed ? [result.statsEmbed] : [],
+            };
+
+            for (const panelChannelId of panelChannelIds) {
+                const panelChannel = guild.channels.cache.get(panelChannelId) ?? await guild.channels.fetch(panelChannelId).catch(() => null);
+                if (!panelChannel?.isTextBased() || typeof panelChannel.send !== 'function') continue;
+                await panelChannel.send(notification).catch(() => {});
+            }
+        }
+
+        return { ...result, statsPostedText };
+    }
+
     async function fetchActiveEventLinks(guild) {
         const scheduledEvents = await guild.scheduledEvents.fetch();
         return [...scheduledEvents.values()]
@@ -989,7 +1037,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             state.incrementMessageCount(message.guild.id, message.author.id, message.channelId, message.createdAt ?? new Date());
         }
 
-        if (message.guild && /^!(queue|q|queuejoin|qj|queueleave|ql|queuenext|qn|addqueue|aq|startqueue|sq|endqueue|eq)(?:\s|$)/i.test(message.content.trim())) {
+        if (message.guild && /^!(queue|q|queuejoin|qj|queueleave|ql|queuenext|qn|addqueue|aq)(?:\s|$)/i.test(message.content.trim())) {
             const [rawCommand, ...rawArgs] = message.content.trim().split(/\s+/);
             const command = rawCommand.toLowerCase();
             const member = await message.guild.members.fetch(message.author.id).catch(() => null);
@@ -1091,65 +1139,55 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 await message.reply(`Added ${targetUser} to the queue.`);
                 return;
             }
+        }
 
-            if (command === '!startqueue' || command === '!sq') {
-                if (!await requireStaff()) return;
+        if (message.guild && /^!(stagestart|ss|stageend|se)(?:\s|$)/i.test(message.content.trim())) {
+            const [rawCommand] = message.content.trim().split(/\s+/);
+            const command = rawCommand.toLowerCase();
+            const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+
+            if (!member) {
+                await message.reply('I could not resolve your member record right now.');
+                return;
+            }
+
+            if (!helpers.isStaff(member)) {
+                await message.reply('Staff only.');
+                return;
+            }
+
+            if (command === '!stagestart' || command === '!ss') {
                 if (!member.voice.channel) {
-                    await message.reply('Join the voice channel you want me to host in first.');
+                    await message.reply('Join the stage channel you want me to track first.');
                     return;
                 }
 
                 const result = await stageFeature.startStage(message.channel, member.voice.channelId);
                 if (result.status === 'conflict') {
-                    await message.reply(`A stage is already active in <#${result.targetVC}>. You can add more control panels only for that same voice channel.`);
+                    await message.reply(`A stage event is already being tracked in <#${result.targetVC}>. You can add more control panels only for that same stage channel.`);
                     return;
                 }
 
                 await syncStageAdvertisementsForGuild(message.guild);
                 await message.reply(result.status === 'created'
-                    ? `Stage initialized for <#${member.voice.channelId}>.`
+                    ? `Started tracking the stage event in <#${member.voice.channelId}>.`
                     : result.status === 'added-panel'
-                        ? `Added a control panel for the active stage in <#${result.targetVC}>.`
-                        : `Refreshed this control panel for the active stage in <#${result.targetVC}>.`);
+                        ? `Added a control panel for the tracked stage event in <#${result.targetVC}>.`
+                        : `Refreshed this control panel for the tracked stage event in <#${result.targetVC}>.`);
                 return;
             }
 
-            if (command === '!endqueue' || command === '!eq') {
-                if (!await requireStaff()) return;
-
-                const result = await stageFeature.stopStage(message.channel);
-                if (result.status === 'missing') {
-                    await message.reply('There is no active stage in this server.');
-                    return;
-                }
-
-                let statsPostedText = '';
-                if (result.statsEmbed && config.POST_EVENT_STATS_CHANNEL_ID) {
-                    const statsChannel = message.guild.channels.cache.get(config.POST_EVENT_STATS_CHANNEL_ID)
-                        ?? await message.guild.channels.fetch(config.POST_EVENT_STATS_CHANNEL_ID).catch(() => null)
-                        ?? await client.channels.fetch(config.POST_EVENT_STATS_CHANNEL_ID).catch(() => null);
-
-                    if (statsChannel?.isTextBased() && typeof statsChannel.send === 'function') {
-                        try {
-                            const statsCard = await buildEventStatsCard({ guild: message.guild, stats: result.statsSummary });
-                            const attachment = new AttachmentBuilder(statsCard, { name: 'post-event-stats.png' });
-                            await statsChannel.send({ files: [attachment] });
-                            statsPostedText = ` Stats posted in <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
-                        } catch (error) {
-                            console.error('Failed to post event stats:', error);
-                            statsPostedText = ` I could not post stats in <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
-                        }
-                    } else {
-                        statsPostedText = ` I could not find a sendable channel for <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
-                    }
-                }
-
-                await message.reply({
-                    content: `Event finished. Connection closed.${statsPostedText}`,
-                    embeds: result.statsEmbed ? [result.statsEmbed] : [],
-                });
+            const result = await concludeStageSession(message.guild, message.channel);
+            if (result.status === 'missing') {
+                await message.reply('There is no active stage event being tracked in this server.');
                 return;
             }
+
+            await message.reply({
+                content: `Stage event tracking ended.${result.statsPostedText}`,
+                embeds: result.statsEmbed ? [result.statsEmbed] : [],
+            });
+            return;
         }
 
         if (message.guild && /^-h(?:\s|$)/i.test(message.content.trim())) {
@@ -1496,35 +1534,14 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
         if (interaction.commandName === 'stop-queue') {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-            const result = await stageFeature.stopStage(interaction.channel);
+            const result = await concludeStageSession(interaction.guild, interaction.channel);
             if (result.status === 'missing') {
                 await interaction.editReply('There is no active stage in this server.');
                 return;
             }
 
-            let statsPostedText = '';
-            if (result.statsEmbed && config.POST_EVENT_STATS_CHANNEL_ID) {
-                const statsChannel = interaction.guild.channels.cache.get(config.POST_EVENT_STATS_CHANNEL_ID)
-                    ?? await interaction.guild.channels.fetch(config.POST_EVENT_STATS_CHANNEL_ID).catch(() => null)
-                    ?? await client.channels.fetch(config.POST_EVENT_STATS_CHANNEL_ID).catch(() => null);
-
-                if (statsChannel?.isTextBased() && typeof statsChannel.send === 'function') {
-                    try {
-                        const statsCard = await buildEventStatsCard({ guild: interaction.guild, stats: result.statsSummary });
-                        const attachment = new AttachmentBuilder(statsCard, { name: 'post-event-stats.png' });
-                        await statsChannel.send({ files: [attachment] });
-                        statsPostedText = ` Stats posted in <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
-                    } catch (error) {
-                        console.error('Failed to post event stats:', error);
-                        statsPostedText = ` I could not post stats in <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
-                    }
-                } else {
-                    statsPostedText = ` I could not find a sendable channel for <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
-                }
-            }
-
             await interaction.editReply({
-                content: `Event finished. Connection closed.${statsPostedText}`,
+                content: `Event finished. Connection closed.${result.statsPostedText}`,
                 embeds: result.statsEmbed ? [result.statsEmbed] : [],
             });
             return;
@@ -1574,10 +1591,41 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const isCounted = isCountedVoiceState(newState);
         const activeStageSession = state.peekGuildStageSession(guild.id);
         const touchedActiveStage = activeStageSession && (oldChannelId === activeStageSession.targetVC || newChannelId === activeStageSession.targetVC);
+        let shouldAutoStopStage = false;
 
         if (touchedActiveStage) {
             await stageFeature.updateAttendance(guild, activeStageSession.targetVC);
+
+            if (oldChannelId === activeStageSession.targetVC && newChannelId === activeStageSession.targetVC) {
+                if (oldState.suppress === true && newState.suppress === false) {
+                    await stageFeature.registerSpeakerPromotion(guild, activeStageSession.targetVC, member.id);
+                } else if (oldState.suppress === false && newState.suppress === true) {
+                    await stageFeature.registerSpeakerDemotion(guild, activeStageSession.targetVC, member.id);
+                }
+            }
+
+            const activeStageChannel = guild.channels.cache.get(activeStageSession.targetVC)
+                ?? await guild.channels.fetch(activeStageSession.targetVC).catch(() => null);
+            const activeStageMemberCount = activeStageChannel?.members?.filter(stageMember => !stageMember.user.bot).size ?? 0;
+            shouldAutoStopStage = activeStageMemberCount === 0;
         }
+
+        const maybeAutoStopStage = async () => {
+            if (!shouldAutoStopStage) return;
+
+            const currentStageSession = state.peekGuildStageSession(guild.id);
+            if (!currentStageSession?.targetVC) return;
+
+            const controlChannelId = currentStageSession.panelChannelIds.values().next().value;
+            if (!controlChannelId) return;
+
+            const controlChannel = guild.channels.cache.get(controlChannelId)
+                ?? await guild.channels.fetch(controlChannelId).catch(() => null);
+            if (!controlChannel?.isTextBased()) return;
+
+            shouldAutoStopStage = false;
+            await concludeStageSession(guild, controlChannel, { notifyPanels: true });
+        };
 
         if (oldChannelId === newChannelId) {
             if (oldChannelId && wasCounted !== isCounted) {
@@ -1586,6 +1634,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             if (touchedShyStage && oldChannelId) {
                 await syncShyStageRooms(guild, oldChannelId);
             }
+            await maybeAutoStopStage();
             return;
         }
 
@@ -1596,6 +1645,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             if (newStageIndex !== null) {
                 await syncShyStageRooms(guild, newChannelId);
             }
+            await maybeAutoStopStage();
             return;
         }
 
@@ -1606,6 +1656,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             if (oldStageIndex !== null) {
                 await syncShyStageRooms(guild, oldChannelId);
             }
+            await maybeAutoStopStage();
             return;
         }
 
@@ -1614,6 +1665,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             if (touchedShyStage) {
                 await syncShyStageRooms(guild, newChannelId ?? oldChannelId);
             }
+            await maybeAutoStopStage();
             return;
         }
 
@@ -1622,6 +1674,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             if (oldStageIndex !== null) {
                 await syncShyStageRooms(guild, oldChannelId);
             }
+            await maybeAutoStopStage();
             return;
         }
 
@@ -1630,6 +1683,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             if (newStageIndex !== null) {
                 await syncShyStageRooms(guild, newChannelId);
             }
+            await maybeAutoStopStage();
         }
     }
 
