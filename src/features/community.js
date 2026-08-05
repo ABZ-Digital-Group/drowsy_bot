@@ -152,6 +152,20 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         return channel.members.filter(member => !member.user.bot).size;
     }
 
+    function isManagedOverflowShyStage(channel) {
+        const index = parseShyStageIndex(channel?.name ?? null);
+        return index !== null && index > shyStageAlwaysVisibleCount;
+    }
+
+    function isShyStageVisibleToEveryone(channel) {
+        const everyoneRole = channel.guild.roles.everyone;
+        const overwrite = channel.permissionOverwrites.cache.get(everyoneRole.id);
+
+        if (overwrite?.deny.has(PermissionFlagsBits.ViewChannel)) return false;
+        if (overwrite?.allow.has(PermissionFlagsBits.ViewChannel)) return true;
+        return true;
+    }
+
     function getShyStageLifecycleState(channel) {
         const existingState = shyStageLifecycle.get(channel.id);
         if (existingState) return existingState;
@@ -161,6 +175,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             hasBeenOccupied: false,
             emptySince: channel.createdTimestamp ?? Date.now(),
             limitConfigured: false,
+            lockedUserLimit: null,
             openNoticeMessageId: null,
             openNoticeChannelId: null,
             limitPromptMessageId: null,
@@ -186,32 +201,17 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         return lifecycleState;
     }
 
-    async function deleteStaleShyStageChannels(guild) {
-        const now = Date.now();
-        const stageChannels = getShyStageChannels(guild);
+    async function setShyStageVisibility(channel, isVisible) {
+        const everyoneRole = channel.guild.roles.everyone;
+        const currentViewState = isShyStageVisibleToEveryone(channel);
 
-        for (const entry of stageChannels) {
-            if (entry.index <= shyStageAlwaysVisibleCount) continue;
+        if (currentViewState === isVisible) return channel;
 
-            const memberCount = getShyStageMemberCount(entry.channel);
-            const lifecycleState = trackShyStageOccupancy(entry.channel, memberCount);
-            if (memberCount > 0) continue;
+        await channel.permissionOverwrites.edit(everyoneRole, {
+            ViewChannel: isVisible,
+        });
 
-            const deleteAfterMs = lifecycleState.hasBeenOccupied ? shyStageEmptyDeleteMs : shyStageUnusedDeleteMs;
-            const emptySince = lifecycleState.emptySince ?? entry.channel.createdTimestamp ?? now;
-            if ((now - emptySince) < deleteAfterMs) continue;
-
-            shyStageLifecycle.delete(entry.channel.id);
-            await entry.channel.delete(`Automatic shy-stage cleanup after ${Math.floor(deleteAfterMs / 60000)} minutes empty`).catch(error => {
-                console.error(`Failed to delete stale shy stage ${entry.channel.id}:`, error);
-            });
-        }
-    }
-
-    async function sweepAllShyStageChannels() {
-        for (const guild of client.guilds.cache.values()) {
-            await deleteStaleShyStageChannels(guild);
-        }
+        return channel;
     }
 
     function formatShyStageLimitChoice(limit) {
@@ -273,7 +273,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
     async function promptShyStageLimitSelection(channel, member) {
         const lifecycleState = getShyStageLifecycleState(channel);
-        if (!lifecycleState.createdByBot || lifecycleState.limitConfigured || lifecycleState.limitPromptMessageId) return;
+        if (!isManagedOverflowShyStage(channel) || lifecycleState.limitConfigured || lifecycleState.limitPromptMessageId) return;
 
         const promptPayload = {
             content: `<@${member.id}> set the room cap size for <#${channel.id}>. This can only be chosen once for this room.`,
@@ -339,8 +339,8 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             return true;
         }
 
-        if (!lifecycleState.createdByBot) {
-            await interaction.reply(helpers.privateReply('This limit picker only works for bot-created shy stages.'));
+        if (!isManagedOverflowShyStage(channel)) {
+            await interaction.reply(helpers.privateReply('This limit picker only works for managed shy-stage overflow rooms.'));
             return true;
         }
 
@@ -364,44 +364,23 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         }
 
         lifecycleState.limitConfigured = true;
+        lifecycleState.lockedUserLimit = selectedLimit;
         await finalizeShyStageLimitPrompt(interaction.guild, lifecycleState, channel, selectedLimit);
         await interaction.reply(helpers.privateReply(`Locked <#${channel.id}> to ${formatShyStageLimitChoice(selectedLimit)} until the room is deleted.`));
         return true;
     }
 
     async function ensureShyStageSettings(channel) {
-        if (channel.userLimit !== shyStageUserLimit) {
-            await channel.edit({ userLimit: shyStageUserLimit });
+        const lifecycleState = getShyStageLifecycleState(channel);
+        const desiredLimit = lifecycleState.limitConfigured && lifecycleState.lockedUserLimit !== null
+            ? lifecycleState.lockedUserLimit
+            : shyStageUserLimit;
+
+        if (channel.userLimit !== desiredLimit) {
+            await channel.edit({ userLimit: desiredLimit });
         }
 
         return channel;
-    }
-
-    async function createShyStageChannel(guild, index, categoryId, anchorChannel) {
-        const createdChannel = await guild.channels.create({
-            name: `${shyStageBaseName} ${formatShyStageIndex(index)}`,
-            type: anchorChannel?.type === ChannelType.GuildStageVoice ? ChannelType.GuildStageVoice : ChannelType.GuildVoice,
-            parent: categoryId,
-            userLimit: shyStageUserLimit,
-        });
-
-        if (anchorChannel) {
-            await createdChannel.setPosition(anchorChannel.rawPosition + 1).catch(() => {});
-        }
-
-        shyStageLifecycle.set(createdChannel.id, {
-            createdByBot: true,
-            hasBeenOccupied: false,
-            emptySince: Date.now(),
-            limitConfigured: false,
-            openNoticeMessageId: null,
-            openNoticeChannelId: null,
-            limitPromptMessageId: null,
-            limitPromptChannelId: null,
-            firstOccupantUserId: null,
-        });
-
-        return ensureShyStageSettings(createdChannel);
     }
 
     function formatShyStageIndex(index) {
@@ -456,18 +435,36 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const stageChannels = getShyStageChannels(guild);
         if (stageChannels.length < shyStageAlwaysVisibleCount) return;
 
-        const categoryId = getShyStageCategoryId(stageChannels);
+        console.log('[shy-stage] detected channels:', stageChannels.map(entry => ({
+            id: entry.channel.id,
+            name: entry.channel.name,
+            index: entry.index,
+            parentId: entry.channel.parentId,
+        })));
+
         const stageState = stageChannels.map(entry => ({
             ...entry,
             memberCount: getShyStageMemberCount(entry.channel),
+            isVisible: isShyStageVisibleToEveryone(entry.channel),
         }));
 
-        const visibleStageEntries = stageState.filter(entry => entry.index <= shyStageAlwaysVisibleCount || entry.memberCount > 0);
+        console.log('[shy-stage] state snapshot:', stageState.map(entry => ({
+            id: entry.channel.id,
+            name: entry.channel.name,
+            index: entry.index,
+            memberCount: entry.memberCount,
+            isVisible: entry.isVisible,
+        })));
+
+        const visibleStageEntries = stageState.filter(entry => entry.index <= shyStageAlwaysVisibleCount || entry.isVisible || entry.memberCount > 0);
         const lastVisibleEntry = visibleStageEntries[visibleStageEntries.length - 1] ?? null;
 
         for (const entry of stageState) {
             await ensureShyStageSettings(entry.channel);
             trackShyStageOccupancy(entry.channel, entry.memberCount);
+
+            const shouldBeVisible = entry.index <= shyStageAlwaysVisibleCount || entry.memberCount > 0;
+            await setShyStageVisibility(entry.channel, shouldBeVisible);
         }
 
         if (!changedChannelId) return;
@@ -475,8 +472,26 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const changedEntry = stageState.find(entry => entry.channel.id === changedChannelId);
         if (!changedEntry || !lastVisibleEntry) return;
 
+        console.log('[shy-stage] changed entry + last visible:', {
+            changedChannelId,
+            changedEntry: changedEntry ? {
+                id: changedEntry.channel.id,
+                name: changedEntry.channel.name,
+                index: changedEntry.index,
+                memberCount: changedEntry.memberCount,
+                isVisible: changedEntry.isVisible,
+            } : null,
+            lastVisibleEntry: lastVisibleEntry ? {
+                id: lastVisibleEntry.channel.id,
+                name: lastVisibleEntry.channel.name,
+                index: lastVisibleEntry.index,
+                memberCount: lastVisibleEntry.memberCount,
+                isVisible: lastVisibleEntry.isVisible,
+            } : null,
+        });
+
         const changedLifecycleState = getShyStageLifecycleState(changedEntry.channel);
-        if (changedLifecycleState.createdByBot && changedEntry.memberCount === 1 && !changedLifecycleState.limitConfigured && !changedLifecycleState.limitPromptMessageId) {
+        if (isManagedOverflowShyStage(changedEntry.channel) && changedEntry.memberCount === 1 && !changedLifecycleState.limitConfigured && !changedLifecycleState.limitPromptMessageId) {
             const firstMember = changedEntry.channel.members.find(member => !member.user.bot) ?? null;
             if (firstMember) {
                 await promptShyStageLimitSelection(changedEntry.channel, firstMember);
@@ -489,12 +504,28 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
         const nextIndex = changedEntry.index + 1;
         const existingNext = stageState.find(entry => entry.index === nextIndex)?.channel;
-        if (!existingNext) {
-            const nextChannel = await createShyStageChannel(guild, nextIndex, categoryId, changedEntry.channel);
-            await announceShyStageOpened(nextChannel);
-        }
+        console.log('[shy-stage] reveal check:', {
+            currentName: changedEntry.channel.name,
+            currentIndex: changedEntry.index,
+            isLastVisibleSlot,
+            isOccupied,
+            nextIndex,
+            existingNext: existingNext ? {
+                id: existingNext.id,
+                name: existingNext.name,
+                visible: isShyStageVisibleToEveryone(existingNext),
+            } : null,
+        });
 
-        await deleteStaleShyStageChannels(guild);
+        if (existingNext && !isShyStageVisibleToEveryone(existingNext)) {
+            console.log('[shy-stage] revealing next channel:', {
+                id: existingNext.id,
+                name: existingNext.name,
+            });
+            await setShyStageVisibility(existingNext, true);
+            await ensureShyStageSettings(existingNext);
+            await announceShyStageOpened(existingNext);
+        }
     }
 
     function buildHoursEmbed(subject, voiceTotals, messageTotals, ranks, guild) {
@@ -823,14 +854,18 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
         if (!shyStageCleanupTimer) {
             shyStageCleanupTimer = setInterval(() => {
-                sweepAllShyStageChannels().catch(error => {
-                    console.error('Shy-stage cleanup failed:', error);
-                });
+                for (const guild of client.guilds.cache.values()) {
+                    syncShyStageRooms(guild).catch(error => {
+                        console.error('Shy-stage visibility sync failed:', error);
+                    });
+                }
             }, shyStageCleanupIntervalMs);
         }
 
         await syncAllStageAdvertisements();
-        await sweepAllShyStageChannels();
+        for (const guild of client.guilds.cache.values()) {
+            await syncShyStageRooms(guild);
+        }
     }
 
     async function restoreVoiceHourSessions() {
@@ -924,11 +959,197 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         }
     }
 
+    async function resolveQueueTargetMember(message, rawArgs) {
+        const mentionedMember = message.mentions.members.first();
+        if (mentionedMember) return mentionedMember;
+
+        const firstArg = rawArgs[0]?.trim();
+        if (!firstArg) return null;
+
+        const normalizedId = firstArg.replace(/[<@!>]/g, '');
+        if (/^\d{17,20}$/.test(normalizedId)) {
+            return await message.guild.members.fetch(normalizedId).catch(() => null);
+        }
+
+        const searchTerm = rawArgs.join(' ').trim().toLowerCase();
+        if (!searchTerm) return null;
+
+        return message.guild.members.cache.find(candidate => {
+            const username = candidate.user.username?.toLowerCase();
+            const globalName = candidate.user.globalName?.toLowerCase();
+            const displayName = candidate.displayName?.toLowerCase();
+            return username === searchTerm || globalName === searchTerm || displayName === searchTerm;
+        }) ?? null;
+    }
+
     async function handleMessageCreate(message) {
         if (message.author.bot) return;
 
         if (message.guild) {
             state.incrementMessageCount(message.guild.id, message.author.id, message.channelId, message.createdAt ?? new Date());
+        }
+
+        if (message.guild && /^!(queue|q|queuejoin|qj|queueleave|ql|queuenext|qn|addqueue|aq|startqueue|sq|endqueue|eq)(?:\s|$)/i.test(message.content.trim())) {
+            const [rawCommand, ...rawArgs] = message.content.trim().split(/\s+/);
+            const command = rawCommand.toLowerCase();
+            const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+
+            if (!member) {
+                await message.reply('I could not resolve your member record right now.');
+                return;
+            }
+
+            const isStaff = helpers.isStaff(member);
+            const requireStaff = async () => {
+                if (isStaff) return true;
+                await message.reply('Staff only.');
+                return false;
+            };
+
+            if (command === '!queue' || command === '!q') {
+                const result = stageFeature.getQueueEmbed(message.channel);
+                if (result.status === 'missing') {
+                    await message.reply('There is no active stage in this server.');
+                    return;
+                }
+
+                await message.reply({ embeds: [result.embed] });
+                return;
+            }
+
+            if (command === '!queuejoin' || command === '!qj') {
+                const result = await stageFeature.joinQueue(message.channel, member);
+                if (result.status === 'missing') {
+                    await message.reply('There is no active stage in this server.');
+                    return;
+                }
+                if (result.status === 'closed') {
+                    await message.reply('This queue is closed to new joiners right now.');
+                    return;
+                }
+                if (result.status === 'wrong-channel') {
+                    await message.reply(`You must be in <#${result.targetVC}> to join this queue.`);
+                    return;
+                }
+                if (result.status === 'already-queued') {
+                    await message.reply('You are already in the lineup.');
+                    return;
+                }
+
+                await message.reply('You joined the queue.');
+                return;
+            }
+
+            if (command === '!queueleave' || command === '!ql') {
+                const result = await stageFeature.leaveQueue(message.channel, message.author.id);
+                if (result.status === 'missing') {
+                    await message.reply('There is no active stage in this server.');
+                    return;
+                }
+                if (result.status === 'not-queued') {
+                    await message.reply('You are not currently in the queue.');
+                    return;
+                }
+
+                await message.reply(result.removedCurrentSpeaker ? 'You left the stage and the queue moved forward.' : 'You left the queue.');
+                return;
+            }
+
+            if (command === '!queuenext' || command === '!qn') {
+                if (!await requireStaff()) return;
+
+                const result = await stageFeature.nextSpeaker(message.channel);
+                if (result.status === 'missing') {
+                    await message.reply('There is no active stage in this server.');
+                    return;
+                }
+
+                await syncStageAdvertisementsForGuild(message.guild);
+                await message.reply('Moved to the next performer.');
+                return;
+            }
+
+            if (command === '!addqueue' || command === '!aq') {
+                if (!await requireStaff()) return;
+
+                const targetUser = await resolveQueueTargetMember(message, rawArgs);
+                if (!targetUser) {
+                    await message.reply('Mention a user, provide a user ID, or use their exact username/display name to add them to the queue.');
+                    return;
+                }
+
+                const result = await stageFeature.addToQueue(message.channel, targetUser);
+                if (result.status === 'missing') {
+                    await message.reply('There is no active stage in this server.');
+                    return;
+                }
+                if (result.status === 'already-queued') {
+                    await message.reply(`${targetUser} is already in the lineup.`);
+                    return;
+                }
+
+                await message.reply(`Added ${targetUser} to the queue.`);
+                return;
+            }
+
+            if (command === '!startqueue' || command === '!sq') {
+                if (!await requireStaff()) return;
+                if (!member.voice.channel) {
+                    await message.reply('Join the voice channel you want me to host in first.');
+                    return;
+                }
+
+                const result = await stageFeature.startStage(message.channel, member.voice.channelId);
+                if (result.status === 'conflict') {
+                    await message.reply(`A stage is already active in <#${result.targetVC}>. You can add more control panels only for that same voice channel.`);
+                    return;
+                }
+
+                await syncStageAdvertisementsForGuild(message.guild);
+                await message.reply(result.status === 'created'
+                    ? `Stage initialized for <#${member.voice.channelId}>.`
+                    : result.status === 'added-panel'
+                        ? `Added a control panel for the active stage in <#${result.targetVC}>.`
+                        : `Refreshed this control panel for the active stage in <#${result.targetVC}>.`);
+                return;
+            }
+
+            if (command === '!endqueue' || command === '!eq') {
+                if (!await requireStaff()) return;
+
+                const result = await stageFeature.stopStage(message.channel);
+                if (result.status === 'missing') {
+                    await message.reply('There is no active stage in this server.');
+                    return;
+                }
+
+                let statsPostedText = '';
+                if (result.statsEmbed && config.POST_EVENT_STATS_CHANNEL_ID) {
+                    const statsChannel = message.guild.channels.cache.get(config.POST_EVENT_STATS_CHANNEL_ID)
+                        ?? await message.guild.channels.fetch(config.POST_EVENT_STATS_CHANNEL_ID).catch(() => null)
+                        ?? await client.channels.fetch(config.POST_EVENT_STATS_CHANNEL_ID).catch(() => null);
+
+                    if (statsChannel?.isTextBased() && typeof statsChannel.send === 'function') {
+                        try {
+                            const statsCard = await buildEventStatsCard({ guild: message.guild, stats: result.statsSummary });
+                            const attachment = new AttachmentBuilder(statsCard, { name: 'post-event-stats.png' });
+                            await statsChannel.send({ files: [attachment] });
+                            statsPostedText = ` Stats posted in <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
+                        } catch (error) {
+                            console.error('Failed to post event stats:', error);
+                            statsPostedText = ` I could not post stats in <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
+                        }
+                    } else {
+                        statsPostedText = ` I could not find a sendable channel for <#${config.POST_EVENT_STATS_CHANNEL_ID}>.`;
+                    }
+                }
+
+                await message.reply({
+                    content: `Event finished. Connection closed.${statsPostedText}`,
+                    embeds: result.statsEmbed ? [result.statsEmbed] : [],
+                });
+                return;
+            }
         }
 
         if (message.guild && /^-h(?:\s|$)/i.test(message.content.trim())) {

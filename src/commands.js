@@ -3,13 +3,6 @@ const config = require('./config');
 
 function buildCommands() {
     return [
-        new SlashCommandBuilder().setName('queue').setDescription('Show the current stage queue'),
-        new SlashCommandBuilder().setName('start-queue').setDescription('Launch a stage in this channel (Staff Only)'),
-        new SlashCommandBuilder().setName('open-queue').setDescription('Allow new people to join the current stage queue (Staff Only)'),
-        new SlashCommandBuilder().setName('close-queue').setDescription('Stop new people from joining the current stage queue (Staff Only)'),
-        new SlashCommandBuilder().setName('stop-queue').setDescription('Shutdown this stage (Staff Only)'),
-        new SlashCommandBuilder().setName('next').setDescription('Move to the next performer (Staff Only)'),
-        new SlashCommandBuilder().setName('radio').setDescription('Toggle the background track (Staff Only)'),
         new SlashCommandBuilder()
             .setName('ad-upload')
             .setDescription('Upload an ad image for the OBS overlay (Staff Only)')

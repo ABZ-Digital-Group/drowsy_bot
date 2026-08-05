@@ -130,26 +130,26 @@ The stage queue is built for hosted performances or open-mic style events.
 
 ### Commands
 
-- `/queue`
-- `/start-queue`
-- `/open-queue`
-- `/close-queue`
-- `/stop-queue`
-- `/next`
-- `/radio`
+- `!queue` / `!q`: show the current queue
+- `!queuejoin` / `!qj`: join the queue
+- `!queueleave` / `!ql`: leave the queue
+- `!queuenext` / `!qn`: move to the next performer (staff only)
+- `!addqueue` / `!aq`: add someone to the queue by mention, user ID, or exact username/display name (staff only)
+- `!startqueue` / `!sq`: start a queue for your current voice channel (staff only)
+- `!endqueue` / `!eq`: end the active queue (staff only)
 
 ### How It Works
 
 1. A staff member joins the voice channel they want to host.
-2. They run `/start-queue` in a text channel.
+2. They run `!startqueue` or `!sq` in a text channel.
 3. The bot posts a queue panel with buttons.
-4. Staff can run `/start-queue` in additional text channels for the same active voice channel to create mirrored control panels.
-5. Members join or leave the lineup using buttons from any active control panel.
+4. Staff can run `!startqueue` in additional text channels for the same active voice channel to create mirrored control panels.
+5. Members can join with `!queuejoin`, leave with `!queueleave`, or use the panel buttons.
 6. If nobody is currently up, the first person to join is moved on stage immediately.
-7. Staff move the event forward with `/next` or the active speaker ends their turn with `Done`.
-8. Anyone can run `/queue` to post the current lineup in the channel.
-9. Staff can close the queue to new joiners with `/close-queue` and reopen it with `/open-queue`.
-10. When staff end the session with `/stop-queue`, the bot returns post-event stats for performers, audience, songs sung, and peak attendance.
+7. Staff move the event forward with `!queuenext` or the active speaker ends their turn with `Done`.
+8. Anyone can run `!queue` to post the current lineup in the channel.
+9. Staff can add someone directly with `!addqueue`.
+10. When staff end the session with `!endqueue`, the bot returns post-event stats for performers, audience, songs sung, and peak attendance.
 
 ### Queue Buttons
 
@@ -172,33 +172,32 @@ The stage queue is built for hosted performances or open-mic style events.
 - voice channels named `Shy Stage 1`, `Shy Stage 2`, `Shy Stage 3`, and so on are managed automatically
 - Roman numeral names are also supported, such as `shy stage I`, `shy stage II`, and `Shy Stage III`
 - `Shy Stage 1` and `Shy Stage 2` stay visible at all times
-- when the last currently active shy stage has someone in it, the bot creates the next shy stage channel with a default member limit of `3`
-- overflow rooms stay visible after they are created
-- if nobody joins a newly created overflow room within `5` minutes, the bot deletes it automatically
-- if an overflow room above `Shy Stage 2` sits empty for `15` minutes after being used, the bot deletes it automatically
-- the bot posts a side-chat notice to the first text channel in the same category when a shy stage room opens
-- when the first person joins a bot-created overflow room, the bot posts buttons in side chat so that person can lock the room limit once until the room is deleted and recreated
+- pre-made overflow rooms above `Shy Stage 2` are hidden until needed
+- when the last currently visible shy stage has someone in it, the bot reveals the next pre-made shy stage channel with a default member limit of `3`
+- empty overflow rooms above `Shy Stage 2` are hidden again when they are not in use
+- the bot posts room-cap buttons in the shy stage chat when an overflow room is revealed
+- when the first person joins a managed overflow room, only that user can lock the room limit, and it stays locked for that room until the bot restarts
 
 ### How It Works
 
 1. Keep two base shy stages available at all times.
 2. A member joins the last currently available shy stage.
 3. If that join makes the room active with its first non-bot member, the bot prepares the next shy stage.
-4. The next shy stage is created if it does not exist yet.
-5. The bot gives the new room a default member limit of `3`.
-6. The bot sends a notice in the first text channel under the same category.
-7. When the first person joins that bot-created overflow room, the side chat shows buttons so that person can lock the room limit for the life of that room.
-8. Unused overflow rooms are removed after 5 minutes, and used overflow rooms are removed after 15 minutes empty.
+4. The next pre-made shy stage is revealed if it is currently hidden.
+5. The bot gives the revealed room a default member limit of `3` unless that room already has a locked limit.
+6. The bot posts room-cap buttons in that shy stage chat.
+7. When the first person joins that managed overflow room, only that user can lock the room limit for the life of that room.
+8. Empty overflow rooms above `Shy Stage 2` are hidden again until needed.
 
 ### Example Flow
 
 1. `Shy Stage I` and `Shy Stage II` are visible.
 2. Someone joins `Shy Stage I`. Nothing new is created yet because `Shy Stage II` is still the last available shy stage.
 3. Someone joins `Shy Stage II`.
-4. Because `Shy Stage II` is the last currently available shy stage and just got its first non-bot member, the bot creates `Shy Stage III`.
-5. `Shy Stage III` stays available after it is created and becomes the next overflow target.
-6. When the first person joins `Shy Stage III`, the bot posts limit buttons in side chat for that user to lock the room size.
-7. If nobody joins `Shy Stage III` within 5 minutes, or it later sits empty for 15 minutes after use, the bot deletes it.
+4. Because `Shy Stage II` is the last currently visible shy stage and just got its first non-bot member, the bot reveals `Shy Stage III`.
+5. `Shy Stage III` becomes the next overflow target while it is in use.
+6. The room-cap buttons appear in `Shy Stage III` chat.
+7. Once `Shy Stage III` is empty again, the bot hides it until it is needed later.
 
 ### Requirements
 

@@ -276,6 +276,64 @@ function createStageFeature({ config, state, helpers }) {
         return { status: 'ok', acceptingJoins: session.acceptingJoins };
     }
 
+    async function joinQueue(channel, member) {
+        const session = state.peekGuildStageSession(channel.guild.id);
+        if (!session) return { status: 'missing' };
+        if (!session.acceptingJoins) return { status: 'closed' };
+        if (!member.voice.channel || member.voice.channelId !== session.targetVC) {
+            return { status: 'wrong-channel', targetVC: session.targetVC };
+        }
+        if (session.queue.includes(member.id) || session.currentSpeaker === member.id) {
+            return { status: 'already-queued' };
+        }
+
+        session.queue.push(member.id);
+        if (!session.currentSpeaker) {
+            await handleNextSpeaker(channel.guild, session);
+        }
+
+        await refreshAllPanels(channel.guild, session);
+        return { status: 'ok', currentSpeaker: session.currentSpeaker };
+    }
+
+    async function leaveQueue(channel, userId) {
+        const session = state.peekGuildStageSession(channel.guild.id);
+        if (!session) return { status: 'missing' };
+
+        const queuedBefore = session.queue.includes(userId);
+        session.queue = session.queue.filter(id => id !== userId);
+
+        if (session.currentSpeaker === userId) {
+            session.currentSpeaker = null;
+            await handleNextSpeaker(channel.guild, session);
+            await refreshAllPanels(channel.guild, session);
+            return { status: 'ok', removedCurrentSpeaker: true, currentSpeaker: session.currentSpeaker };
+        }
+
+        if (!queuedBefore) {
+            return { status: 'not-queued' };
+        }
+
+        await refreshAllPanels(channel.guild, session);
+        return { status: 'ok', removedCurrentSpeaker: false, currentSpeaker: session.currentSpeaker };
+    }
+
+    async function addToQueue(channel, member) {
+        const session = state.peekGuildStageSession(channel.guild.id);
+        if (!session) return { status: 'missing' };
+        if (session.queue.includes(member.id) || session.currentSpeaker === member.id) {
+            return { status: 'already-queued' };
+        }
+
+        session.queue.push(member.id);
+        if (!session.currentSpeaker) {
+            await handleNextSpeaker(channel.guild, session);
+        }
+
+        await refreshAllPanels(channel.guild, session);
+        return { status: 'ok', currentSpeaker: session.currentSpeaker };
+    }
+
     async function stopStage(channel) {
         const session = state.peekGuildStageSession(channel.guild.id);
         if (!session) return { status: 'missing' };
@@ -382,6 +440,9 @@ function createStageFeature({ config, state, helpers }) {
     return {
         startStage,
         getQueueEmbed,
+        joinQueue,
+        leaveQueue,
+        addToQueue,
         nextSpeaker,
         toggleRadio,
         setJoinState,
