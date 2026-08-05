@@ -237,13 +237,16 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         };
     }
 
-    async function postShyStageSideChatMessage(channel, payload) {
+    async function postShyStageSideChatMessage(channel, payload, options = {}) {
+        const allowSiblingFallback = options.allowSiblingFallback === true;
         const apiPayload = toApiMessagePayload(payload);
 
         try {
             return await client.rest.post(Routes.channelMessages(channel.id), { body: apiPayload });
         } catch (error) {
-            if (!channel.parentId) throw error;
+            console.error(`Failed to post shy-stage side-chat message to ${channel.id} (${channel.name ?? 'unknown'}):`, error);
+
+            if (!allowSiblingFallback || !channel.parentId) throw error;
 
             const siblingTextChannels = channel.guild.channels.cache
                 .filter(candidate => candidate.id !== channel.id && candidate.parentId === channel.parentId && candidate.isTextBased())
@@ -273,7 +276,10 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const promptMessage = await postShyStageSideChatMessage(channel, {
             content: `<@${member.id}> set the member limit for <#${channel.id}>. This can only be chosen once for this room.`,
             components: buildShyStageLimitButtons(channel.id),
-        }).catch(() => null);
+        }, { allowSiblingFallback: false }).catch(error => {
+            console.error(`Failed to send shy-stage limit prompt for ${channel.id}:`, error);
+            return null;
+        });
 
         if (!promptMessage) return;
 
@@ -402,7 +408,9 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     async function announceShyStageOpened(channel) {
         await postShyStageSideChatMessage(channel, {
             content: `<#${channel.id}> is now open. Member limit: ${shyStageUserLimit}.`,
-        }).catch(() => {});
+        }, { allowSiblingFallback: false }).catch(error => {
+            console.error(`Failed to announce shy stage opening for ${channel.id}:`, error);
+        });
     }
 
     async function syncShyStageRooms(guild, changedChannelId = null) {
@@ -443,8 +451,8 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const nextIndex = changedEntry.index + 1;
         const existingNext = stageState.find(entry => entry.index === nextIndex)?.channel;
         if (!existingNext) {
-            await createShyStageChannel(guild, nextIndex, categoryId, changedEntry.channel);
-            await announceShyStageOpened(changedEntry.channel);
+            const nextChannel = await createShyStageChannel(guild, nextIndex, categoryId, changedEntry.channel);
+            await announceShyStageOpened(nextChannel);
         }
 
         await deleteStaleShyStageChannels(guild);
