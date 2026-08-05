@@ -10,6 +10,7 @@ const {
     GuildScheduledEventStatus,
     MessageFlags,
     PermissionFlagsBits,
+    Routes,
 } = require('discord.js');
 
 const { buildHoursCard, buildEventStatsCard } = require('../hour-card');
@@ -227,14 +228,49 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         ];
     }
 
+    function toApiMessagePayload(payload) {
+        return {
+            ...payload,
+            components: Array.isArray(payload.components)
+                ? payload.components.map(component => typeof component.toJSON === 'function' ? component.toJSON() : component)
+                : undefined,
+        };
+    }
+
+    async function postShyStageSideChatMessage(channel, payload) {
+        const apiPayload = toApiMessagePayload(payload);
+
+        try {
+            return await client.rest.post(Routes.channelMessages(channel.id), { body: apiPayload });
+        } catch (error) {
+            if (!channel.parentId) throw error;
+
+            const siblingTextChannels = channel.guild.channels.cache
+                .filter(candidate => candidate.id !== channel.id && candidate.parentId === channel.parentId && candidate.isTextBased())
+                .sort((left, right) => left.rawPosition - right.rawPosition);
+            const fallbackChannel = siblingTextChannels.first();
+            if (!fallbackChannel || typeof fallbackChannel.send !== 'function') {
+                throw error;
+            }
+
+            const sentMessage = await fallbackChannel.send(payload);
+            return {
+                id: sentMessage.id,
+                channel_id: fallbackChannel.id,
+            };
+        }
+    }
+
+    async function editShyStageSideChatMessage(channelId, messageId, payload) {
+        const apiPayload = toApiMessagePayload(payload);
+        return client.rest.patch(Routes.channelMessage(channelId, messageId), { body: apiPayload });
+    }
+
     async function promptShyStageLimitSelection(channel, member) {
         const lifecycleState = getShyStageLifecycleState(channel);
         if (!lifecycleState.createdByBot || lifecycleState.limitConfigured || lifecycleState.limitPromptMessageId) return;
 
-        const sideChat = await resolveShyStageSideChat(channel);
-        if (!sideChat) return;
-
-        const promptMessage = await sideChat.send({
+        const promptMessage = await postShyStageSideChatMessage(channel, {
             content: `<@${member.id}> set the member limit for <#${channel.id}>. This can only be chosen once for this room.`,
             components: buildShyStageLimitButtons(channel.id),
         }).catch(() => null);
@@ -242,21 +278,14 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         if (!promptMessage) return;
 
         lifecycleState.limitPromptMessageId = promptMessage.id;
-        lifecycleState.limitPromptChannelId = sideChat.id;
+        lifecycleState.limitPromptChannelId = promptMessage.channel_id ?? channel.id;
         lifecycleState.firstOccupantUserId = member.id;
     }
 
     async function finalizeShyStageLimitPrompt(guild, lifecycleState, channel, selectedLimit) {
         if (!lifecycleState.limitPromptMessageId || !lifecycleState.limitPromptChannelId) return;
 
-        const promptChannel = guild.channels.cache.get(lifecycleState.limitPromptChannelId)
-            ?? await guild.channels.fetch(lifecycleState.limitPromptChannelId).catch(() => null);
-        if (!promptChannel?.isTextBased()) return;
-
-        const promptMessage = await promptChannel.messages.fetch(lifecycleState.limitPromptMessageId).catch(() => null);
-        if (!promptMessage) return;
-
-        await promptMessage.edit({
+        await editShyStageSideChatMessage(lifecycleState.limitPromptChannelId, lifecycleState.limitPromptMessageId, {
             content: `Member limit for <#${channel.id}> is locked to ${formatShyStageLimitChoice(selectedLimit)} until this room is deleted and recreated.`,
             components: buildShyStageLimitButtons(channel.id, selectedLimit),
         }).catch(() => {});
@@ -370,27 +399,10 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         return output || String(index);
     }
 
-    async function resolveShyStageSideChat(channel) {
-        if (!channel) return null;
-
-        if (typeof channel.send === 'function') {
-            return channel;
-        }
-
-        if (!channel.parentId) return null;
-
-        const siblingTextChannels = channel.guild.channels.cache
-            .filter(candidate => candidate.id !== channel.id && candidate.parentId === channel.parentId && candidate.isTextBased())
-            .sort((left, right) => left.rawPosition - right.rawPosition);
-
-        return siblingTextChannels.first() ?? null;
-    }
-
     async function announceShyStageOpened(channel) {
-        const sideChat = await resolveShyStageSideChat(channel);
-        if (!sideChat) return;
-
-        await sideChat.send(`<#${channel.id}> is now open. Member limit: ${shyStageUserLimit}.`).catch(() => {});
+        await postShyStageSideChatMessage(channel, {
+            content: `<#${channel.id}> is now open. Member limit: ${shyStageUserLimit}.`,
+        }).catch(() => {});
     }
 
     async function syncShyStageRooms(guild, changedChannelId = null) {
