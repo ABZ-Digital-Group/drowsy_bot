@@ -202,11 +202,16 @@ function createStageFeature({ config, state, helpers }) {
         await startRadio(guild, session);
     }
 
-    async function startStage(channel, voiceChannelId) {
+    async function startStage(channel, voiceChannelId, options = {}) {
+        const trackingOnly = options.trackingOnly === true;
         const existingSession = state.peekGuildStageSession(channel.guild.id);
         if (existingSession) {
             if (existingSession.targetVC !== voiceChannelId) {
                 return { status: 'conflict', targetVC: existingSession.targetVC };
+            }
+
+            if (trackingOnly) {
+                return { status: 'existing-tracker', targetVC: existingSession.targetVC };
             }
 
             const hadPanel = existingSession.panelChannelIds.has(channel.id);
@@ -218,12 +223,16 @@ function createStageFeature({ config, state, helpers }) {
         const session = state.getGuildStageSession(channel.guild.id);
         session.targetVC = voiceChannelId;
         session.startedAt = new Date().toISOString();
-        session.panelChannelIds.add(channel.id);
         const voiceChannel = channel.guild.channels.cache.get(voiceChannelId) ?? await channel.guild.channels.fetch(voiceChannelId).catch(() => null);
         syncAttendance(session, getCountedStageMemberIds(voiceChannel));
-        writeObsNowSinging('Open Mic');
-        await refreshAllPanels(channel.guild, session);
-        await startRadio(channel.guild, session);
+
+        if (!trackingOnly) {
+            session.panelChannelIds.add(channel.id);
+            writeObsNowSinging('Open Mic');
+            await refreshAllPanels(channel.guild, session);
+            await startRadio(channel.guild, session);
+        }
+
         return { status: 'created', targetVC: session.targetVC };
     }
 

@@ -1162,18 +1162,15 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                     return;
                 }
 
-                const result = await stageFeature.startStage(message.channel, member.voice.channelId);
+                const result = await stageFeature.startStage(message.channel, member.voice.channelId, { trackingOnly: true });
                 if (result.status === 'conflict') {
                     await message.reply(`A stage event is already being tracked in <#${result.targetVC}>. You can add more control panels only for that same stage channel.`);
                     return;
                 }
 
-                await syncStageAdvertisementsForGuild(message.guild);
                 await message.reply(result.status === 'created'
                     ? `Started tracking the stage event in <#${member.voice.channelId}>.`
-                    : result.status === 'added-panel'
-                        ? `Added a control panel for the tracked stage event in <#${result.targetVC}>.`
-                        : `Refreshed this control panel for the tracked stage event in <#${result.targetVC}>.`);
+                    : `Stage event tracking is already active in <#${result.targetVC}>.`);
                 return;
             }
 
