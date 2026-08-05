@@ -1162,6 +1162,11 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                     return;
                 }
 
+                if (member.voice.channel.type !== ChannelType.GuildStageVoice) {
+                    await message.reply('`!stagestart` only works when you are connected to a Discord stage channel.');
+                    return;
+                }
+
                 const result = await stageFeature.startStage(message.channel, member.voice.channelId, { trackingOnly: true });
                 if (result.status === 'conflict') {
                     await message.reply(`A stage event is already being tracked in <#${result.targetVC}>. You can add more control panels only for that same stage channel.`);
