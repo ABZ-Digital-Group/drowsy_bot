@@ -371,10 +371,16 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     }
 
     async function resolveShyStageSideChat(channel) {
-        if (!channel?.parentId) return null;
+        if (!channel) return null;
+
+        if (channel.isTextBased?.() && typeof channel.send === 'function') {
+            return channel;
+        }
+
+        if (!channel.parentId) return null;
 
         const siblingTextChannels = channel.guild.channels.cache
-            .filter(candidate => candidate.parentId === channel.parentId && candidate.isTextBased())
+            .filter(candidate => candidate.id !== channel.id && candidate.parentId === channel.parentId && candidate.isTextBased())
             .sort((left, right) => left.rawPosition - right.rawPosition);
 
         return siblingTextChannels.first() ?? null;
