@@ -1,7 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const {
+    ActionRowBuilder,
     AttachmentBuilder,
+    ButtonBuilder,
+    ButtonStyle,
     ChannelType,
     EmbedBuilder,
     GuildScheduledEventStatus,
@@ -20,12 +23,18 @@ const IMAGE_CONTENT_TYPE_EXTENSIONS = {
 
 function createCommunityFeature({ client, config, state, helpers, stageFeature }) {
     let advertisementSyncTimer = null;
+    let shyStageCleanupTimer = null;
     let hoursCardRenderingDisabled = false;
     const fallbackAnnouncementColor = 0x5865F2;
     const hourWindows = [1, 7, 14];
     const shyStageBaseName = 'Shy Stage';
     const shyStageAlwaysVisibleCount = 2;
     const shyStageUserLimit = 3;
+    const shyStageLimitButtonChoices = config.SHY_STAGE_LIMIT_CHOICES;
+    const shyStageUnusedDeleteMs = config.SHY_STAGE_UNUSED_DELETE_MINUTES * 60 * 1000;
+    const shyStageEmptyDeleteMs = config.SHY_STAGE_EMPTY_DELETE_MINUTES * 60 * 1000;
+    const shyStageCleanupIntervalMs = config.SHY_STAGE_CLEANUP_INTERVAL_SECONDS * 1000;
+    const shyStageLifecycle = new Map();
     const romanNumeralValues = new Map([
         ['I', 1],
         ['V', 5],
@@ -138,6 +147,166 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         return stageChannels[0]?.channel.parentId ?? null;
     }
 
+    function getShyStageMemberCount(channel) {
+        return channel.members.filter(member => !member.user.bot).size;
+    }
+
+    function getShyStageLifecycleState(channel) {
+        const existingState = shyStageLifecycle.get(channel.id);
+        if (existingState) return existingState;
+
+        const initialState = {
+            createdByBot: false,
+            hasBeenOccupied: false,
+            emptySince: channel.createdTimestamp ?? Date.now(),
+            limitConfigured: false,
+            limitPromptMessageId: null,
+            limitPromptChannelId: null,
+            firstOccupantUserId: null,
+        };
+        shyStageLifecycle.set(channel.id, initialState);
+        return initialState;
+    }
+
+    function trackShyStageOccupancy(channel, memberCount) {
+        const lifecycleState = getShyStageLifecycleState(channel);
+        if (memberCount > 0) {
+            lifecycleState.hasBeenOccupied = true;
+            lifecycleState.emptySince = null;
+            return lifecycleState;
+        }
+
+        if (lifecycleState.emptySince === null) {
+            lifecycleState.emptySince = Date.now();
+        }
+
+        return lifecycleState;
+    }
+
+    async function deleteStaleShyStageChannels(guild) {
+        const now = Date.now();
+        const stageChannels = getShyStageChannels(guild);
+
+        for (const entry of stageChannels) {
+            if (entry.index <= shyStageAlwaysVisibleCount) continue;
+
+            const memberCount = getShyStageMemberCount(entry.channel);
+            const lifecycleState = trackShyStageOccupancy(entry.channel, memberCount);
+            if (memberCount > 0) continue;
+
+            const deleteAfterMs = lifecycleState.hasBeenOccupied ? shyStageEmptyDeleteMs : shyStageUnusedDeleteMs;
+            const emptySince = lifecycleState.emptySince ?? entry.channel.createdTimestamp ?? now;
+            if ((now - emptySince) < deleteAfterMs) continue;
+
+            shyStageLifecycle.delete(entry.channel.id);
+            await entry.channel.delete(`Automatic shy-stage cleanup after ${Math.floor(deleteAfterMs / 60000)} minutes empty`).catch(error => {
+                console.error(`Failed to delete stale shy stage ${entry.channel.id}:`, error);
+            });
+        }
+    }
+
+    async function sweepAllShyStageChannels() {
+        for (const guild of client.guilds.cache.values()) {
+            await deleteStaleShyStageChannels(guild);
+        }
+    }
+
+    function formatShyStageLimitChoice(limit) {
+        return limit === 0 ? 'Unlimited' : String(limit);
+    }
+
+    function buildShyStageLimitButtons(channelId, selectedLimit = null) {
+        return [
+            new ActionRowBuilder().addComponents(
+                ...shyStageLimitButtonChoices.map(limit => new ButtonBuilder()
+                    .setCustomId(`shy-stage-limit:${channelId}:${limit}`)
+                    .setLabel(formatShyStageLimitChoice(limit))
+                    .setStyle(limit === selectedLimit ? ButtonStyle.Success : ButtonStyle.Secondary)
+                    .setDisabled(selectedLimit !== null))
+            ),
+        ];
+    }
+
+    async function promptShyStageLimitSelection(channel, member) {
+        const lifecycleState = getShyStageLifecycleState(channel);
+        if (!lifecycleState.createdByBot || lifecycleState.limitConfigured || lifecycleState.limitPromptMessageId) return;
+
+        const sideChat = await resolveShyStageSideChat(channel);
+        if (!sideChat) return;
+
+        const promptMessage = await sideChat.send({
+            content: `<@${member.id}> set the member limit for <#${channel.id}>. This can only be chosen once for this room.`,
+            components: buildShyStageLimitButtons(channel.id),
+        }).catch(() => null);
+
+        if (!promptMessage) return;
+
+        lifecycleState.limitPromptMessageId = promptMessage.id;
+        lifecycleState.limitPromptChannelId = sideChat.id;
+        lifecycleState.firstOccupantUserId = member.id;
+    }
+
+    async function finalizeShyStageLimitPrompt(guild, lifecycleState, channel, selectedLimit) {
+        if (!lifecycleState.limitPromptMessageId || !lifecycleState.limitPromptChannelId) return;
+
+        const promptChannel = guild.channels.cache.get(lifecycleState.limitPromptChannelId)
+            ?? await guild.channels.fetch(lifecycleState.limitPromptChannelId).catch(() => null);
+        if (!promptChannel?.isTextBased()) return;
+
+        const promptMessage = await promptChannel.messages.fetch(lifecycleState.limitPromptMessageId).catch(() => null);
+        if (!promptMessage) return;
+
+        await promptMessage.edit({
+            content: `Member limit for <#${channel.id}> is locked to ${formatShyStageLimitChoice(selectedLimit)} until this room is deleted and recreated.`,
+            components: buildShyStageLimitButtons(channel.id, selectedLimit),
+        }).catch(() => {});
+    }
+
+    async function handleShyStageLimitButton(interaction) {
+        const match = /^shy-stage-limit:(\d{17,20}):(0|\d+)$/.exec(interaction.customId);
+        if (!match) return false;
+
+        const [, channelId, limitToken] = match;
+        const selectedLimit = Number.parseInt(limitToken, 10);
+        const channel = interaction.guild.channels.cache.get(channelId)
+            ?? await interaction.guild.channels.fetch(channelId).catch(() => null);
+
+        if (!channel || (channel.type !== ChannelType.GuildVoice && channel.type !== ChannelType.GuildStageVoice)) {
+            await interaction.reply(helpers.privateReply('That shy stage no longer exists.'));
+            return true;
+        }
+
+        const lifecycleState = getShyStageLifecycleState(channel);
+        if (lifecycleState.limitConfigured) {
+            await interaction.reply(helpers.privateReply(`The member limit for <#${channel.id}> is already locked.`));
+            return true;
+        }
+
+        if (!lifecycleState.createdByBot) {
+            await interaction.reply(helpers.privateReply('This limit picker only works for bot-created shy stages.'));
+            return true;
+        }
+
+        if (interaction.user.id !== lifecycleState.firstOccupantUserId) {
+            await interaction.reply(helpers.privateReply('Only the first person who joined this room can set its member limit.'));
+            return true;
+        }
+
+        await channel.edit({ userLimit: selectedLimit }).catch(async error => {
+            console.error(`Failed to set shy-stage user limit for ${channel.id}:`, error);
+            await interaction.reply(helpers.privateReply('I could not update that channel limit.'));
+        });
+
+        if (channel.userLimit !== selectedLimit) {
+            return true;
+        }
+
+        lifecycleState.limitConfigured = true;
+        await finalizeShyStageLimitPrompt(interaction.guild, lifecycleState, channel, selectedLimit);
+        await interaction.reply(helpers.privateReply(`Locked <#${channel.id}> to ${formatShyStageLimitChoice(selectedLimit)} until the room is deleted.`));
+        return true;
+    }
+
     async function ensureShyStageSettings(channel) {
         if (channel.userLimit !== shyStageUserLimit) {
             await channel.edit({ userLimit: shyStageUserLimit });
@@ -157,6 +326,16 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         if (anchorChannel) {
             await createdChannel.setPosition(anchorChannel.rawPosition + 1).catch(() => {});
         }
+
+        shyStageLifecycle.set(createdChannel.id, {
+            createdByBot: true,
+            hasBeenOccupied: false,
+            emptySince: Date.now(),
+            limitConfigured: false,
+            limitPromptMessageId: null,
+            limitPromptChannelId: null,
+            firstOccupantUserId: null,
+        });
 
         return ensureShyStageSettings(createdChannel);
     }
@@ -215,7 +394,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const categoryId = getShyStageCategoryId(stageChannels);
         const stageState = stageChannels.map(entry => ({
             ...entry,
-            memberCount: entry.channel.members.filter(member => !member.user.bot).size,
+            memberCount: getShyStageMemberCount(entry.channel),
         }));
 
         const visibleStageEntries = stageState.filter(entry => entry.index <= shyStageAlwaysVisibleCount || entry.memberCount > 0);
@@ -223,12 +402,21 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
 
         for (const entry of stageState) {
             await ensureShyStageSettings(entry.channel);
+            trackShyStageOccupancy(entry.channel, entry.memberCount);
         }
 
         if (!changedChannelId) return;
 
         const changedEntry = stageState.find(entry => entry.channel.id === changedChannelId);
         if (!changedEntry || !lastVisibleEntry) return;
+
+        const changedLifecycleState = getShyStageLifecycleState(changedEntry.channel);
+        if (changedLifecycleState.createdByBot && changedEntry.memberCount === 1 && !changedLifecycleState.limitConfigured && !changedLifecycleState.limitPromptMessageId) {
+            const firstMember = changedEntry.channel.members.find(member => !member.user.bot) ?? null;
+            if (firstMember) {
+                await promptShyStageLimitSelection(changedEntry.channel, firstMember);
+            }
+        }
 
         const isLastVisibleSlot = changedEntry.index === lastVisibleEntry.index;
         const isOccupied = changedEntry.memberCount > 0;
@@ -240,6 +428,8 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             await createShyStageChannel(guild, nextIndex, categoryId, changedEntry.channel);
             await announceShyStageOpened(changedEntry.channel);
         }
+
+        await deleteStaleShyStageChannels(guild);
     }
 
     function buildHoursEmbed(subject, voiceTotals, messageTotals, ranks, guild) {
@@ -566,7 +756,16 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             }, 5000);
         }
 
+        if (!shyStageCleanupTimer) {
+            shyStageCleanupTimer = setInterval(() => {
+                sweepAllShyStageChannels().catch(error => {
+                    console.error('Shy-stage cleanup failed:', error);
+                });
+            }, shyStageCleanupIntervalMs);
+        }
+
         await syncAllStageAdvertisements();
+        await sweepAllShyStageChannels();
     }
 
     async function restoreVoiceHourSessions() {
@@ -716,6 +915,9 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         if (!interaction.guild) return;
 
         if (interaction.isButton()) {
+            const handledShyStageLimit = await handleShyStageLimitButton(interaction);
+            if (handledShyStageLimit) return;
+
             const handled = await stageFeature.handleButtonInteraction(interaction);
             if (handled) return;
         }

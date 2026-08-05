@@ -8,6 +8,22 @@ const OBS_NOW_SINGING_FILE = path.join(ASSETS_DIR, 'obs-now-singing.txt');
 const OBS_NOW_SINGING_JSON_FILE = path.join(ASSETS_DIR, 'obs-now-singing.json');
 const OBS_ADS_JSON_FILE = path.join(DATA_DIR, 'obs-ads.json');
 const parsedObsHttpPort = Number.parseInt(process.env.OBS_HTTP_PORT ?? '', 10);
+const parsedShyStageUnusedDeleteMinutes = Number.parseInt(process.env.SHY_STAGE_UNUSED_DELETE_MINUTES ?? '', 10);
+const parsedShyStageEmptyDeleteMinutes = Number.parseInt(process.env.SHY_STAGE_EMPTY_DELETE_MINUTES ?? '', 10);
+const parsedShyStageCleanupIntervalSeconds = Number.parseInt(process.env.SHY_STAGE_CLEANUP_INTERVAL_SECONDS ?? '', 10);
+const parsedShyStageLimitChoices = (process.env.SHY_STAGE_LIMIT_CHOICES ?? '')
+    .split(',')
+    .map(token => token.trim())
+    .filter(Boolean)
+    .map(token => token.toLowerCase() === 'unlimited'
+        ? 0
+        : Number.parseInt(token, 10))
+    .filter(value => value === 0 || (Number.isInteger(value) && value >= 1 && value <= 99));
+const uniqueShyStageLimitChoices = [...new Set(parsedShyStageLimitChoices)].sort((left, right) => {
+    if (left === 0) return 1;
+    if (right === 0) return -1;
+    return left - right;
+});
 
 module.exports = {
     ROOT_DIR,
@@ -20,6 +36,18 @@ module.exports = {
     MAX_PURGE_SCAN_LIMIT: 1000,
     OBS_HTTP_HOST: process.env.OBS_HTTP_HOST?.trim() || '0.0.0.0',
     OBS_HTTP_PORT: Number.isFinite(parsedObsHttpPort) ? parsedObsHttpPort : null,
+    SHY_STAGE_UNUSED_DELETE_MINUTES: Number.isInteger(parsedShyStageUnusedDeleteMinutes) && parsedShyStageUnusedDeleteMinutes > 0
+        ? parsedShyStageUnusedDeleteMinutes
+        : 5,
+    SHY_STAGE_EMPTY_DELETE_MINUTES: Number.isInteger(parsedShyStageEmptyDeleteMinutes) && parsedShyStageEmptyDeleteMinutes > 0
+        ? parsedShyStageEmptyDeleteMinutes
+        : 15,
+    SHY_STAGE_CLEANUP_INTERVAL_SECONDS: Number.isInteger(parsedShyStageCleanupIntervalSeconds) && parsedShyStageCleanupIntervalSeconds > 0
+        ? parsedShyStageCleanupIntervalSeconds
+        : 60,
+    SHY_STAGE_LIMIT_CHOICES: uniqueShyStageLimitChoices.length > 0
+        ? uniqueShyStageLimitChoices
+        : [5, 10, 15, 0],
     POST_EVENT_STATS_CHANNEL_ID: '1229141305444012126',
     STAGE_ADMIN_ROLES: ['Guards', 'Knights', 'Drowsy Defenders', 'God'],
     DATA_DIR,

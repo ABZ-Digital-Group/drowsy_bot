@@ -53,6 +53,10 @@ GUILD_ID=your_server_id
 ALLOW_INVITE_PASSWORD=optional_dm_password
 OBS_HTTP_PORT=8080
 OBS_HTTP_HOST=0.0.0.0
+SHY_STAGE_UNUSED_DELETE_MINUTES=5
+SHY_STAGE_EMPTY_DELETE_MINUTES=15
+SHY_STAGE_CLEANUP_INTERVAL_SECONDS=60
+SHY_STAGE_LIMIT_CHOICES=5,10,15,unlimited
 ```
 
 ### Variable Reference
@@ -63,6 +67,11 @@ OBS_HTTP_HOST=0.0.0.0
 - `ALLOW_INVITE_PASSWORD`: optional password used by the DM command `!allowinvite <password>`
 - `OBS_HTTP_PORT`: optional port for the built-in OBS overlay endpoint
 - `OBS_HTTP_HOST`: optional bind host for the OBS overlay endpoint
+- `SHY_STAGE_UNUSED_DELETE_MINUTES`: optional minutes before an unused auto-created shy stage is deleted
+- `SHY_STAGE_EMPTY_DELETE_MINUTES`: optional minutes before a previously used shy stage above 1 and 2 is deleted after becoming empty
+- `SHY_STAGE_CLEANUP_INTERVAL_SECONDS`: optional cleanup sweep interval for shy-stage deletion checks
+- `SHY_STAGE_LIMIT_CHOICES`: optional comma-separated member-limit button choices for bot-created shy stages, for example `5,10,15,unlimited`
+- `SHY_STAGE_CLEANUP_INTERVAL_SECONDS`: optional cleanup sweep interval for shy-stage deletion checks
 
 ## Discord Intents
 
@@ -163,9 +172,12 @@ The stage queue is built for hosted performances or open-mic style events.
 - voice channels named `Shy Stage 1`, `Shy Stage 2`, `Shy Stage 3`, and so on are managed automatically
 - Roman numeral names are also supported, such as `shy stage I`, `shy stage II`, and `Shy Stage III`
 - `Shy Stage 1` and `Shy Stage 2` stay visible at all times
-- when the last currently active shy stage has someone in it, the bot creates the next shy stage channel and sets its member limit to `3`
+- when the last currently active shy stage has someone in it, the bot creates the next shy stage channel with a default member limit of `3`
 - overflow rooms stay visible after they are created
+- if nobody joins a newly created overflow room within `5` minutes, the bot deletes it automatically
+- if an overflow room above `Shy Stage 2` sits empty for `15` minutes after being used, the bot deletes it automatically
 - the bot posts a side-chat notice to the first text channel in the same category when a shy stage room opens
+- when the first person joins a bot-created overflow room, the bot posts buttons in side chat so that person can lock the room limit once until the room is deleted and recreated
 
 ### How It Works
 
@@ -173,16 +185,20 @@ The stage queue is built for hosted performances or open-mic style events.
 2. A member joins the last currently available shy stage.
 3. If that join makes the room active with its first non-bot member, the bot prepares the next shy stage.
 4. The next shy stage is created if it does not exist yet.
-5. The bot sets the shy stage user limit to `3`.
+5. The bot gives the new room a default member limit of `3`.
 6. The bot sends a notice in the first text channel under the same category.
+7. When the first person joins that bot-created overflow room, the side chat shows buttons so that person can lock the room limit for the life of that room.
+8. Unused overflow rooms are removed after 5 minutes, and used overflow rooms are removed after 15 minutes empty.
 
 ### Example Flow
 
 1. `Shy Stage I` and `Shy Stage II` are visible.
 2. Someone joins `Shy Stage I`. Nothing new is created yet because `Shy Stage II` is still the last available shy stage.
 3. Someone joins `Shy Stage II`.
-4. Because `Shy Stage II` is the last currently available shy stage and just got its first non-bot member, the bot creates or reveals `Shy Stage III`.
+4. Because `Shy Stage II` is the last currently available shy stage and just got its first non-bot member, the bot creates `Shy Stage III`.
 5. `Shy Stage III` stays available after it is created and becomes the next overflow target.
+6. When the first person joins `Shy Stage III`, the bot posts limit buttons in side chat for that user to lock the room size.
+7. If nobody joins `Shy Stage III` within 5 minutes, or it later sits empty for 15 minutes after use, the bot deletes it.
 
 ### Requirements
 
