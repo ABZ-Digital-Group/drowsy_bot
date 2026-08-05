@@ -163,8 +163,8 @@ The stage queue is built for hosted performances or open-mic style events.
 - voice channels named `Shy Stage 1`, `Shy Stage 2`, `Shy Stage 3`, and so on are managed automatically
 - Roman numeral names are also supported, such as `shy stage I`, `shy stage II`, and `Shy Stage III`
 - `Shy Stage 1` and `Shy Stage 2` stay visible at all times
-- when the first non-bot member joins the last currently available shy stage, the bot creates or reveals the next shy stage channel and sets its member limit to `3`
-- empty overflow rooms such as `Shy Stage 3+` are hidden again when everyone leaves
+- when the last currently active shy stage has someone in it, the bot creates the next shy stage channel and sets its member limit to `3`
+- overflow rooms stay visible after they are created
 - the bot posts a side-chat notice to the first text channel in the same category when a shy stage room opens
 
 ### How It Works
@@ -172,10 +172,9 @@ The stage queue is built for hosted performances or open-mic style events.
 1. Keep two base shy stages available at all times.
 2. A member joins the last currently available shy stage.
 3. If that join makes the room active with its first non-bot member, the bot prepares the next shy stage.
-4. The next shy stage is created if it does not exist yet, or kept hidden and ready if it already exists.
+4. The next shy stage is created if it does not exist yet.
 5. The bot sets the shy stage user limit to `3`.
 6. The bot sends a notice in the first text channel under the same category.
-7. When an overflow shy stage becomes empty again, it is hidden from members until it is needed next time.
 
 ### Example Flow
 
@@ -183,8 +182,7 @@ The stage queue is built for hosted performances or open-mic style events.
 2. Someone joins `Shy Stage I`. Nothing new is created yet because `Shy Stage II` is still the last available shy stage.
 3. Someone joins `Shy Stage II`.
 4. Because `Shy Stage II` is the last currently available shy stage and just got its first non-bot member, the bot creates or reveals `Shy Stage III`.
-5. `Shy Stage III` stays empty and hidden until needed, then becomes the next overflow target.
-6. Once everyone leaves `Shy Stage III`, it is hidden again.
+5. `Shy Stage III` stays available after it is created and becomes the next overflow target.
 
 ### Requirements
 

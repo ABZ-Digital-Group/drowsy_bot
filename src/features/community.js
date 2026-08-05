@@ -138,26 +138,10 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         return stageChannels[0]?.channel.parentId ?? null;
     }
 
-    async function setShyStageVisibility(channel, isVisible) {
-        const everyoneRole = channel.guild.roles.everyone;
-        const existingOverwrite = channel.permissionOverwrites.cache.get(everyoneRole.id);
-        const currentViewState = existingOverwrite?.allow.has(PermissionFlagsBits.ViewChannel)
-            ? true
-            : existingOverwrite?.deny.has(PermissionFlagsBits.ViewChannel)
-                ? false
-                : null;
-
+    async function ensureShyStageSettings(channel) {
         if (channel.userLimit !== shyStageUserLimit) {
             await channel.edit({ userLimit: shyStageUserLimit });
         }
-
-        if (currentViewState === isVisible) {
-            return channel;
-        }
-
-        await channel.permissionOverwrites.edit(everyoneRole, {
-            ViewChannel: isVisible,
-        });
 
         return channel;
     }
@@ -174,8 +158,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             await createdChannel.setPosition(anchorChannel.rawPosition + 1).catch(() => {});
         }
 
-        await setShyStageVisibility(createdChannel, false);
-        return createdChannel;
+        return ensureShyStageSettings(createdChannel);
     }
 
     function formatShyStageIndex(index) {
@@ -239,24 +222,23 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const lastVisibleEntry = visibleStageEntries[visibleStageEntries.length - 1] ?? null;
 
         for (const entry of stageState) {
-            const shouldAlwaysBeVisible = entry.index <= shyStageAlwaysVisibleCount;
-            const shouldBeVisible = shouldAlwaysBeVisible || entry.memberCount > 0;
-            await setShyStageVisibility(entry.channel, shouldBeVisible);
+            await ensureShyStageSettings(entry.channel);
         }
 
-        if (changedChannelId) {
-            const changedEntry = stageState.find(entry => entry.channel.id === changedChannelId);
-            if (changedEntry && lastVisibleEntry) {
-                const isLastVisibleSlot = changedEntry.index === lastVisibleEntry.index;
-                if (changedEntry.memberCount === 1 && isLastVisibleSlot) {
-                    const nextIndex = changedEntry.index + 1;
-                    const existingNext = stageState.find(entry => entry.index === nextIndex)?.channel
-                        ?? await createShyStageChannel(guild, nextIndex, categoryId, changedEntry.channel);
+        if (!changedChannelId) return;
 
-                    await setShyStageVisibility(existingNext, false);
-                    await announceShyStageOpened(changedEntry.channel);
-                }
-            }
+        const changedEntry = stageState.find(entry => entry.channel.id === changedChannelId);
+        if (!changedEntry || !lastVisibleEntry) return;
+
+        const isLastVisibleSlot = changedEntry.index === lastVisibleEntry.index;
+        const isOccupied = changedEntry.memberCount > 0;
+        if (!isLastVisibleSlot || !isOccupied) return;
+
+        const nextIndex = changedEntry.index + 1;
+        const existingNext = stageState.find(entry => entry.index === nextIndex)?.channel;
+        if (!existingNext) {
+            await createShyStageChannel(guild, nextIndex, categoryId, changedEntry.channel);
+            await announceShyStageOpened(changedEntry.channel);
         }
     }
 
