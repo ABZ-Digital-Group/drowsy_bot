@@ -8,6 +8,7 @@ const OBS_NOW_SINGING_FILE = path.join(ASSETS_DIR, 'obs-now-singing.txt');
 const OBS_NOW_SINGING_JSON_FILE = path.join(ASSETS_DIR, 'obs-now-singing.json');
 const OBS_ADS_JSON_FILE = path.join(DATA_DIR, 'obs-ads.json');
 const parsedObsHttpPort = Number.parseInt(process.env.OBS_HTTP_PORT ?? '', 10);
+const parsedAdminSessionHours = Number.parseInt(process.env.ADMIN_PANEL_SESSION_HOURS ?? '', 10);
 const parsedShyStageUnusedDeleteMinutes = Number.parseInt(process.env.SHY_STAGE_UNUSED_DELETE_MINUTES ?? '', 10);
 const parsedShyStageEmptyDeleteMinutes = Number.parseInt(process.env.SHY_STAGE_EMPTY_DELETE_MINUTES ?? '', 10);
 const parsedShyStageCleanupIntervalSeconds = Number.parseInt(process.env.SHY_STAGE_CLEANUP_INTERVAL_SECONDS ?? '', 10);
@@ -36,6 +37,10 @@ module.exports = {
     MAX_PURGE_SCAN_LIMIT: 1000,
     OBS_HTTP_HOST: process.env.OBS_HTTP_HOST?.trim() || '0.0.0.0',
     OBS_HTTP_PORT: Number.isFinite(parsedObsHttpPort) ? parsedObsHttpPort : null,
+    ADMIN_PANEL_PASSWORD: process.env.ADMIN_PANEL_PASSWORD?.trim() || null,
+    ADMIN_PANEL_SESSION_HOURS: Number.isInteger(parsedAdminSessionHours) && parsedAdminSessionHours > 0
+        ? parsedAdminSessionHours
+        : 12,
     SHY_STAGE_UNUSED_DELETE_MINUTES: Number.isInteger(parsedShyStageUnusedDeleteMinutes) && parsedShyStageUnusedDeleteMinutes > 0
         ? parsedShyStageUnusedDeleteMinutes
         : 5,

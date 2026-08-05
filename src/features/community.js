@@ -640,6 +640,36 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         return advertisement;
     }
 
+    async function storeAdvertisementBuffer({ buffer, fileName, contentType, title }) {
+        const attachment = {
+            name: fileName,
+            contentType,
+        };
+        const extension = resolveImageExtension(attachment);
+        if (!extension || !Buffer.isBuffer(buffer) || buffer.length === 0) {
+            throw new Error('unsupported-file-type');
+        }
+
+        const label = sanitizeAdvertisementLabel(title || fileName || 'ad') || 'ad';
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const safeFileName = `${id}-${label}${extension}`;
+        const filePath = path.join(config.ADS_DIR, safeFileName);
+
+        await fs.promises.writeFile(filePath, buffer);
+
+        const advertisement = {
+            id,
+            title: (title ?? '').trim() || fileName || safeFileName,
+            fileName: safeFileName,
+            originalName: fileName || safeFileName,
+            contentType: contentType || 'application/octet-stream',
+            uploadedAt: new Date().toISOString(),
+        };
+
+        state.addAdvertisement(advertisement);
+        return advertisement;
+    }
+
     function buildAdvertisementList() {
         const advertisements = state.getAdvertisements();
         if (advertisements.length === 0) return 'No ad images have been uploaded yet.';
@@ -807,6 +837,109 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         }
 
         return { ...result, statsPostedText };
+    }
+
+    async function startTrackedStage(guildId, textChannelId, stageChannelId) {
+        const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+        if (!guild) return { status: 'missing-guild' };
+
+        const textChannel = guild.channels.cache.get(textChannelId) ?? await guild.channels.fetch(textChannelId).catch(() => null);
+        if (!textChannel?.isTextBased()) return { status: 'missing-text-channel' };
+
+        const stageChannel = guild.channels.cache.get(stageChannelId) ?? await guild.channels.fetch(stageChannelId).catch(() => null);
+        if (!stageChannel || stageChannel.type !== ChannelType.GuildStageVoice) {
+            return { status: 'invalid-stage-channel' };
+        }
+
+        return stageFeature.startStage(textChannel, stageChannelId, { trackingOnly: true });
+    }
+
+    async function endTrackedStage(guildId, textChannelId) {
+        const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+        if (!guild) return { status: 'missing-guild' };
+
+        const textChannel = guild.channels.cache.get(textChannelId) ?? await guild.channels.fetch(textChannelId).catch(() => null);
+        if (!textChannel?.isTextBased()) return { status: 'missing-text-channel' };
+
+        return concludeStageSession(guild, textChannel);
+    }
+
+    async function sendAnnouncementFromAdmin({ guildId, channelId, message, title, color }) {
+        const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+        if (!guild) return { status: 'missing-guild' };
+
+        const targetChannel = guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId).catch(() => null);
+        if (!targetChannel?.isTextBased() || targetChannel.isDMBased?.()) {
+            return { status: 'missing-channel' };
+        }
+
+        const normalizedMessage = normalizeAnnouncementText(message ?? '');
+        if (!normalizedMessage.trim()) return { status: 'missing-message' };
+
+        const guildConfig = state.getGuildConfig(guild.id);
+        const requestedColor = parseAnnouncementColor(color);
+        if (requestedColor?.error) return { status: 'invalid-color', error: requestedColor.error };
+
+        const defaultColor = parseAnnouncementColor(guildConfig.announcementColor);
+        const embedColor = requestedColor?.value ?? defaultColor?.value ?? fallbackAnnouncementColor;
+        const botMember = guild.members.me ?? await guild.members.fetchMe();
+        const permissions = targetChannel.permissionsFor(botMember);
+        const requiredPermissions = targetChannel.isThread()
+            ? [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessagesInThreads]
+            : [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages];
+
+        if (!permissions?.has(requiredPermissions)) {
+            return { status: 'missing-permission' };
+        }
+
+        const trimmedTitle = title?.trim() || null;
+        const payload = trimmedTitle || requestedColor?.value
+            ? {
+                embeds: [new EmbedBuilder()
+                    .setDescription(normalizedMessage)
+                    .setColor(embedColor)
+                    .setTitle(trimmedTitle ?? 'Announcement')],
+            }
+            : { content: normalizedMessage };
+
+        await targetChannel.send(payload);
+        return { status: 'sent' };
+    }
+
+    function setInviteException(userId, allowed) {
+        if (!userId?.trim()) return { status: 'missing-user' };
+
+        if (allowed) {
+            state.allowedInviteUsers.add(userId.trim());
+        } else {
+            state.allowedInviteUsers.delete(userId.trim());
+        }
+
+        state.saveAllowedInviteUsers();
+        return { status: 'ok' };
+    }
+
+    async function uploadAdvertisementFromAdmin({ buffer, fileName, contentType, title }) {
+        const advertisement = await storeAdvertisementBuffer({ buffer, fileName, contentType, title });
+        await syncAllStageAdvertisements();
+        return { status: 'created', advertisement };
+    }
+
+    async function removeAdvertisementFromAdmin(index) {
+        const removed = state.removeAdvertisementByIndex(index);
+        if (!removed) return { status: 'missing' };
+
+        await fs.promises.unlink(path.join(config.ADS_DIR, removed.fileName)).catch(() => {});
+        await syncAllStageAdvertisements();
+        return { status: 'removed', removed };
+    }
+
+    async function purgeInvitesFromAdmin(guildId, scanLimit) {
+        const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+        if (!guild) return { status: 'missing-guild' };
+
+        const result = await purgeInviteLinksInGuild(guild, scanLimit);
+        return { status: 'ok', ...result };
     }
 
     async function fetchActiveEventLinks(guild) {
@@ -1695,6 +1828,13 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         handleMessageCreate,
         handleVoiceStateUpdate,
         handleInteraction,
+        startTrackedStage,
+        endTrackedStage,
+        sendAnnouncementFromAdmin,
+        setInviteException,
+        uploadAdvertisementFromAdmin,
+        removeAdvertisementFromAdmin,
+        purgeInvitesFromAdmin,
     };
 }
 
