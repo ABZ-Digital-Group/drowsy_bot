@@ -373,7 +373,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     async function resolveShyStageSideChat(channel) {
         if (!channel) return null;
 
-        if (channel.isTextBased?.() && typeof channel.send === 'function') {
+        if (typeof channel.send === 'function') {
             return channel;
         }
 
