@@ -161,6 +161,8 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             hasBeenOccupied: false,
             emptySince: channel.createdTimestamp ?? Date.now(),
             limitConfigured: false,
+            openNoticeMessageId: null,
+            openNoticeChannelId: null,
             limitPromptMessageId: null,
             limitPromptChannelId: null,
             firstOccupantUserId: null,
@@ -273,10 +275,30 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
         const lifecycleState = getShyStageLifecycleState(channel);
         if (!lifecycleState.createdByBot || lifecycleState.limitConfigured || lifecycleState.limitPromptMessageId) return;
 
-        const promptMessage = await postShyStageSideChatMessage(channel, {
-            content: `<@${member.id}> set the member limit for <#${channel.id}>. This can only be chosen once for this room.`,
+        const promptPayload = {
+            content: `<@${member.id}> set the room cap size for <#${channel.id}>. This can only be chosen once for this room.`,
             components: buildShyStageLimitButtons(channel.id),
-        }, { allowSiblingFallback: false }).catch(error => {
+        };
+
+        if (lifecycleState.openNoticeMessageId && lifecycleState.openNoticeChannelId) {
+            const updatedMessage = await editShyStageSideChatMessage(
+                lifecycleState.openNoticeChannelId,
+                lifecycleState.openNoticeMessageId,
+                promptPayload,
+            ).catch(error => {
+                console.error(`Failed to convert shy-stage open notice into limit prompt for ${channel.id}:`, error);
+                return null;
+            });
+
+            if (updatedMessage) {
+                lifecycleState.limitPromptMessageId = lifecycleState.openNoticeMessageId;
+                lifecycleState.limitPromptChannelId = lifecycleState.openNoticeChannelId;
+                lifecycleState.firstOccupantUserId = member.id;
+                return;
+            }
+        }
+
+        const promptMessage = await postShyStageSideChatMessage(channel, promptPayload, { allowSiblingFallback: false }).catch(error => {
             console.error(`Failed to send shy-stage limit prompt for ${channel.id}:`, error);
             return null;
         });
@@ -367,6 +389,8 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             hasBeenOccupied: false,
             emptySince: Date.now(),
             limitConfigured: false,
+            openNoticeMessageId: null,
+            openNoticeChannelId: null,
             limitPromptMessageId: null,
             limitPromptChannelId: null,
             firstOccupantUserId: null,
@@ -406,11 +430,18 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     }
 
     async function announceShyStageOpened(channel) {
-        await postShyStageSideChatMessage(channel, {
+        const lifecycleState = getShyStageLifecycleState(channel);
+        const openMessage = await postShyStageSideChatMessage(channel, {
             content: `<#${channel.id}> is now open. Member limit: ${shyStageUserLimit}.`,
         }, { allowSiblingFallback: false }).catch(error => {
             console.error(`Failed to announce shy stage opening for ${channel.id}:`, error);
+            return null;
         });
+
+        if (!openMessage) return;
+
+        lifecycleState.openNoticeMessageId = openMessage.id;
+        lifecycleState.openNoticeChannelId = openMessage.channel_id ?? channel.id;
     }
 
     async function syncShyStageRooms(guild, changedChannelId = null) {
