@@ -371,6 +371,10 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     }
 
     async function ensureShyStageSettings(channel) {
+        if (!isManagedOverflowShyStage(channel)) {
+            return channel;
+        }
+
         const lifecycleState = getShyStageLifecycleState(channel);
         const desiredLimit = lifecycleState.limitConfigured && lifecycleState.lockedUserLimit !== null
             ? lifecycleState.lockedUserLimit
