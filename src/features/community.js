@@ -1174,7 +1174,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             state.incrementMessageCount(message.guild.id, message.author.id, message.channelId, message.createdAt ?? new Date());
         }
 
-        if (message.guild && /^!(queue|q|queuejoin|qj|queueleave|ql|queuenext|qn|addqueue|aq)(?:\s|$)/i.test(message.content.trim())) {
+        if (message.guild && /^!(queue|q|queuejoin|qj|queueleave|ql|queuenext|qn|addqueue|aq|startqueue|sq|endqueue|eq)(?:\s|$)/i.test(message.content.trim())) {
             const [rawCommand, ...rawArgs] = message.content.trim().split(/\s+/);
             const command = rawCommand.toLowerCase();
             const member = await message.guild.members.fetch(message.author.id).catch(() => null);
@@ -1274,6 +1274,47 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
                 }
 
                 await message.reply(`Added ${targetUser} to the queue.`);
+                return;
+            }
+
+            if (command === '!startqueue' || command === '!sq') {
+                if (!await requireStaff()) return;
+
+                if (!member.voice.channel) {
+                    await message.reply('Join the voice channel you want me to host in first.');
+                    return;
+                }
+
+                const result = await stageFeature.startStage(message.channel, member.voice.channelId);
+                if (result.status === 'conflict') {
+                    await message.reply(`A stage is already active in <#${result.targetVC}>. You can add more control panels only for that same voice channel.`);
+                    return;
+                }
+
+                const response = result.status === 'created'
+                    ? `Stage initialized for <#${member.voice.channelId}>.`
+                    : result.status === 'added-panel'
+                        ? `Added a control panel for the active stage in <#${result.targetVC}>.`
+                        : `Refreshed this control panel for the active stage in <#${result.targetVC}>.`;
+
+                await syncStageAdvertisementsForGuild(message.guild);
+                await message.reply(response);
+                return;
+            }
+
+            if (command === '!endqueue' || command === '!eq') {
+                if (!await requireStaff()) return;
+
+                const result = await concludeStageSession(message.guild, message.channel);
+                if (result.status === 'missing') {
+                    await message.reply('There is no active stage in this server.');
+                    return;
+                }
+
+                await message.reply({
+                    content: `Event finished. Connection closed.${result.statsPostedText}`,
+                    embeds: result.statsEmbed ? [result.statsEmbed] : [],
+                });
                 return;
             }
         }
@@ -1415,6 +1456,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             'announce',
             'announce-color',
             'start-queue',
+            'startqueue',
             'open-queue',
             'close-queue',
             'stop-queue',
@@ -1523,7 +1565,7 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
             return;
         }
 
-        if (interaction.commandName === 'start-queue') {
+        if (interaction.commandName === 'start-queue' || interaction.commandName === 'startqueue') {
             if (!member.voice.channel) {
                 await interaction.reply(helpers.privateReply('Join the voice channel you want me to host in first.'));
                 return;

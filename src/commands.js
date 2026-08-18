@@ -50,6 +50,14 @@ function buildCommands() {
             .setName('purge-invites')
             .setDescription('Delete unauthorized invite links across text channels (Staff Only)')
             .addIntegerOption(option => option.setName('messages_per_channel').setDescription('Messages to scan per channel').setMinValue(1).setMaxValue(config.MAX_PURGE_SCAN_LIMIT)),
+        new SlashCommandBuilder().setName('queue').setDescription('Show the current stage queue'),
+        new SlashCommandBuilder().setName('start-queue').setDescription('Start a queue for your current voice channel (Staff Only)'),
+        new SlashCommandBuilder().setName('startqueue').setDescription('Start a queue for your current voice channel (Staff Only)'),
+        new SlashCommandBuilder().setName('open-queue').setDescription('Open the active queue for new joiners (Staff Only)'),
+        new SlashCommandBuilder().setName('close-queue').setDescription('Close the active queue to new joiners (Staff Only)'),
+        new SlashCommandBuilder().setName('next').setDescription('Move the queue to the next performer (Staff Only)'),
+        new SlashCommandBuilder().setName('radio').setDescription('Toggle intermission radio for the active queue (Staff Only)'),
+        new SlashCommandBuilder().setName('stop-queue').setDescription('Stop the active queue and post event stats (Staff Only)'),
     ].map(command => command.toJSON());
 }
 
