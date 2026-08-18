@@ -54,7 +54,7 @@ module.exports = {
         ? uniqueShyStageLimitChoices
         : [5, 10, 15, 0],
     POST_EVENT_STATS_CHANNEL_ID: '1229141305444012126',
-    STAGE_ADMIN_ROLES: ['Guards', 'Knights', 'Drowsy Defenders', 'God'],
+        STAGE_ADMIN_ROLES: ['Realm God', 'Dreamy Defender', 'Dreamland Guard', 'Nighty Knight', 'Tired Esquire'],
     DATA_DIR,
     ASSETS_DIR,
     ADS_DIR,

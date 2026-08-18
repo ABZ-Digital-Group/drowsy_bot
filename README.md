@@ -94,10 +94,11 @@ Staff-only commands are available to:
 - members with `Manage Guild`
 - members with `Moderate Members`
 - members who hold one of these role names:
-  - `Guards`
-  - `Knights`
-  - `Drowsy Defenders`
-  - `God`
+  - `Realm God`
+  - `Dreamy Defender`
+  - `Dreamland Guard`
+  - `Nighty Knight`
+  - `Tired Esquire`
 
 ## Project Structure
 
