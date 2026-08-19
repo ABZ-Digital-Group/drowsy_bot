@@ -258,6 +258,93 @@ function createAdminPanel({ client, config, state, communityFeature }) {
         return channels.map(channel => `<option value="${escapeHtml(channel.id)}"${channel.id === selectedId ? ' selected' : ''}>#${escapeHtml(channel.name)}</option>`).join('');
     }
 
+    function normalizeMessageFetchLimit(value) {
+        const parsed = Number.parseInt(String(value ?? ''), 10);
+        if (!Number.isInteger(parsed)) return 25;
+        return Math.max(1, Math.min(100, parsed));
+    }
+
+    async function readChannelMessagesPreview(guildId, channelId, limitValue) {
+        if (!guildId || !channelId) {
+            return {
+                status: 'error',
+                guildId: guildId ?? '',
+                channelId: channelId ?? '',
+                limit: normalizeMessageFetchLimit(limitValue),
+                error: 'Select both a guild and a channel.',
+                messages: [],
+            };
+        }
+
+        const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+        if (!guild) {
+            return {
+                status: 'error',
+                guildId,
+                channelId,
+                limit: normalizeMessageFetchLimit(limitValue),
+                error: 'That guild is not available to the bot.',
+                messages: [],
+            };
+        }
+
+        const channel = guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId).catch(() => null);
+        if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+            return {
+                status: 'error',
+                guildId,
+                channelId,
+                limit: normalizeMessageFetchLimit(limitValue),
+                error: 'Choose a text or announcement channel.',
+                messages: [],
+            };
+        }
+
+        const limit = normalizeMessageFetchLimit(limitValue);
+        const fetched = await channel.messages.fetch({ limit }).catch(() => null);
+        if (!fetched) {
+            return {
+                status: 'error',
+                guildId,
+                guildName: guild.name,
+                channelId,
+                channelName: channel.name,
+                limit,
+                error: 'I could not read messages from that channel. Check bot permissions.',
+                messages: [],
+            };
+        }
+
+        const messages = [...fetched.values()]
+            .sort((left, right) => left.createdTimestamp - right.createdTimestamp)
+            .map(message => {
+                const content = String(message.content ?? '').trim();
+                const attachmentCount = message.attachments?.size ?? 0;
+                const embedCount = Array.isArray(message.embeds) ? message.embeds.length : 0;
+                const details = [];
+
+                if (attachmentCount > 0) details.push(`${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}`);
+                if (embedCount > 0) details.push(`${embedCount} embed${embedCount === 1 ? '' : 's'}`);
+
+                return {
+                    id: message.id,
+                    author: message.author?.tag ?? message.author?.username ?? message.author?.id ?? 'Unknown user',
+                    createdAt: new Date(message.createdTimestamp).toISOString(),
+                    content: content || (details.length > 0 ? `[${details.join(', ')}]` : '[No text content]'),
+                };
+            });
+
+        return {
+            status: 'ok',
+            guildId,
+            guildName: guild.name,
+            channelId,
+            channelName: channel.name,
+            limit,
+            messages,
+        };
+    }
+
     function buildLoginHtml(errorMessage = '') {
         const safeError = errorMessage ? `<p class="notice notice--error">${escapeHtml(errorMessage)}</p>` : '';
         const passwordConfigured = Boolean(config.ADMIN_PANEL_PASSWORD);
@@ -291,7 +378,7 @@ ${safeError}
 </html>`;
     }
 
-    function buildPanelHtml(panelState, flashMessage = '') {
+    function buildPanelHtml(panelState, flashMessage = '', channelViewer = null) {
         const trackedStageMarkup = panelState.trackedStages.length > 0
             ? panelState.trackedStages.map(stage => `
                 <article class="list-card">
@@ -362,10 +449,28 @@ ${safeError}
             : '<article class="list-card"><p>No invite exceptions are saved.</p></article>';
 
         const announcementGuild = panelState.guilds[0] ?? null;
-        const announcementChannelMap = JSON.stringify(Object.fromEntries(
+        const guildChannelMapJson = JSON.stringify(Object.fromEntries(
             panelState.guilds.map(guild => [guild.id, guild.textChannels])
         )).replace(/</g, '\\u003c');
+        const viewerGuildId = channelViewer?.guildId && panelState.guilds.some(guild => guild.id === channelViewer.guildId)
+            ? channelViewer.guildId
+            : (panelState.guilds[0]?.id ?? '');
+        const viewerGuild = panelState.guilds.find(guild => guild.id === viewerGuildId) ?? panelState.guilds[0] ?? null;
+        const viewerChannelId = channelViewer?.channelId
+            ?? viewerGuild?.textChannels[0]?.id
+            ?? '';
+        const viewerMessagesMarkup = channelViewer
+            ? (channelViewer.messages?.length > 0
+                ? channelViewer.messages.map(message => `<article class="list-card"><p><strong>${escapeHtml(message.author)}</strong> <span class="subtle">${escapeHtml(formatDateTime(message.createdAt))}</span></p><p>${escapeHtml(message.content)}</p></article>`).join('')
+                : '<article class="list-card"><p>No messages were found for that channel in the selected range.</p></article>')
+            : '';
+        const viewerStatusMarkup = channelViewer?.error
+            ? `<p class="notice notice--error">${escapeHtml(channelViewer.error)}</p>`
+            : channelViewer
+                ? `<p class="notice notice--success">Showing ${channelViewer.messages.length} message${channelViewer.messages.length === 1 ? '' : 's'} from #${escapeHtml(channelViewer.channelName ?? 'unknown-channel')} in ${escapeHtml(channelViewer.guildName ?? 'unknown guild')}.</p>`
+                : '';
         const flashMarkup = flashMessage ? `<p class="notice notice--success">${escapeHtml(flashMessage)}</p>` : '';
+        const messageViewerSection = `<section class="sections"><section class="section"><h2>Channel Messages</h2><p>Select a guild and text channel to read recent bot-visible messages.</p><form class="stack-form" method="post" action="/admin/messages/view"><label>Guild</label><select id="viewer-guild" name="guildId" required>${buildGuildOptions(panelState.guilds, viewerGuildId)}</select><label>Channel</label><select id="viewer-channel" name="channelId" required>${buildChannelOptions(viewerGuild?.textChannels ?? [], viewerChannelId)}</select><label>Message Limit</label><input name="limit" type="number" min="1" max="100" value="${escapeHtml(String(channelViewer?.limit ?? 25))}"><button type="submit">Load Messages</button></form>${viewerStatusMarkup}${viewerMessagesMarkup}</section><section class="section"><h2>Viewer Notes</h2><p>The panel reads message content using the bot account and only from channels it can access.</p><article class="list-card"><p>Use this to quickly check conversations and moderation context without opening Discord.</p></article></section></section>`;
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -405,11 +510,14 @@ ${flashMarkup}
 <section class="section"><h2>Advertisement Controls</h2><p>Manage the OBS advertisement rotation without Discord commands.</p><article class="list-card"><p><strong>Current Active Ad:</strong> ${escapeHtml(panelState.activeAdvertisement?.title ?? 'None')}</p><p><strong>Rotation:</strong> ${panelState.rotationIntervalMs ? `${Math.max(1, Math.floor(panelState.rotationIntervalMs / 1000))}s` : 'Off'}</p><form class="stack-form" method="post" action="/admin/ads/upload" enctype="multipart/form-data"><label>Ad Title</label><input name="title" maxlength="100" placeholder="Optional title"><label>Image File</label><input name="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" required><button type="submit">Upload Ad</button></form><form class="inline-form" method="post" action="/admin/ads/rotate"><input type="number" name="seconds" min="5" max="3600" placeholder="Seconds"><button type="submit">Start Rotation</button></form><form class="inline-form" method="post" action="/admin/ads/rotate-stop"><button type="submit" class="button button--ghost">Stop Rotation</button></form></article>${adMarkup}</section>
 <section class="section"><h2>Bot Actions</h2><p>Run moderation and housekeeping actions from the browser.</p><article class="list-card"><form class="stack-form" method="post" action="/admin/invites/purge"><label>Guild</label><select name="guildId" required>${buildGuildOptions(panelState.guilds)}</select><label>Messages Per Channel</label><input name="messagesPerChannel" type="number" min="1" max="1000" value="250"><button type="submit">Purge Unauthorized Invites</button></form></article><article class="list-card"><h3>Saved Guild Defaults</h3>${panelState.guilds.map(guild => `<p><strong>${escapeHtml(guild.name)}:</strong> ${escapeHtml(guild.announcementColor ?? 'Default')}</p>`).join('')}</article></section>
 </section>
+${messageViewerSection}
 </main>
 <script>
-const announcementChannelMap = ${announcementChannelMap};
+const announcementChannelMap = ${guildChannelMapJson};
 const announcementGuildSelect = document.getElementById('announcement-guild');
 const announcementChannelSelect = document.getElementById('announcement-channel');
+const viewerGuildSelect = document.getElementById('viewer-guild');
+const viewerChannelSelect = document.getElementById('viewer-channel');
 
 function syncAnnouncementChannels() {
     const guildId = announcementGuildSelect.value;
@@ -420,6 +528,16 @@ function syncAnnouncementChannels() {
 }
 
 announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
+
+    function syncViewerChannels() {
+        const guildId = viewerGuildSelect.value;
+        const channels = Array.isArray(announcementChannelMap[guildId]) ? announcementChannelMap[guildId] : [];
+        viewerChannelSelect.innerHTML = channels
+        .map(channel => '<option value="' + channel.id + '">#' + channel.name + '</option>')
+        .join('');
+    }
+
+    viewerGuildSelect.addEventListener('change', syncViewerChannels);
 </script>
 </body>
 </html>`;
@@ -540,6 +658,15 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
                 ? `Invite cleanup finished. Scanned ${result.scannedChannels} channels, skipped ${result.skippedChannels}, checked ${result.scannedMessages} messages, and deleted ${result.deletedMessages} invite links.`
                 : 'I could not run invite cleanup for that guild.';
             await renderPanel(response, message, result.status === 'ok' ? 200 : 400);
+            return true;
+        }
+
+        if (url.pathname === '/admin/messages/view' && request.method === 'POST') {
+            const form = parseFormBody(await readRequestBody(request));
+            const channelViewer = await readChannelMessagesPreview(form.guildId, form.channelId, form.limit);
+            const panelState = await buildPanelState();
+            const statusCode = channelViewer.status === 'ok' ? 200 : 400;
+            sendHtml(response, statusCode, buildPanelHtml(panelState, '', channelViewer));
             return true;
         }
 
