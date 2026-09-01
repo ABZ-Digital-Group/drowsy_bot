@@ -53,6 +53,7 @@ GUILD_ID=your_server_id
 ALLOW_INVITE_PASSWORD=optional_dm_password
 OBS_HTTP_PORT=8080
 OBS_HTTP_HOST=0.0.0.0
+SHY_STAGE_BASE_NAME=sleepy singing
 SHY_STAGE_UNUSED_DELETE_MINUTES=5
 SHY_STAGE_EMPTY_DELETE_MINUTES=15
 SHY_STAGE_CLEANUP_INTERVAL_SECONDS=60
@@ -67,6 +68,7 @@ SHY_STAGE_LIMIT_CHOICES=5,10,15,unlimited
 - `ALLOW_INVITE_PASSWORD`: optional password used by the DM command `!allowinvite <password>`
 - `OBS_HTTP_PORT`: optional port for the built-in OBS overlay endpoint
 - `OBS_HTTP_HOST`: optional bind host for the OBS overlay endpoint
+- `SHY_STAGE_BASE_NAME`: optional base name prefix for shy stage channels (defaults to `sleepy singing`)
 - `SHY_STAGE_UNUSED_DELETE_MINUTES`: optional minutes before an unused auto-created shy stage is deleted
 - `SHY_STAGE_EMPTY_DELETE_MINUTES`: optional minutes before a previously used shy stage above 1 and 2 is deleted after becoming empty
 - `SHY_STAGE_CLEANUP_INTERVAL_SECONDS`: optional cleanup sweep interval for shy-stage deletion checks

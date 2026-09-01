@@ -28,7 +28,12 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     let hoursCardRenderingDisabled = false;
     const fallbackAnnouncementColor = 0x5865F2;
     const hourWindows = [1, 7, 14];
-    const shyStageBaseName = 'Shy Stage';
+    const shyStageBaseName = config.SHY_STAGE_BASE_NAME || 'sleepy singing';
+    const shyStageBasePatterns = [...new Set([
+        config.SHY_STAGE_BASE_NAME,
+        'sleepy singing',
+        'Shy Stage',
+    ].filter(Boolean))];
     const shyStageAlwaysVisibleCount = 2;
     const shyStageUserLimit = 3;
     const shyStageLimitButtonChoices = config.SHY_STAGE_LIMIT_CHOICES;
@@ -107,7 +112,8 @@ function createCommunityFeature({ client, config, state, helpers, stageFeature }
     }
 
     function parseShyStageIndex(channelName) {
-        const match = new RegExp(`^(?:[^a-z0-9]+\\s*)?${escapeRegExp(shyStageBaseName)}\\s+([ivxlcdm]+|\\d+)$`, 'i').exec(channelName?.trim() ?? '');
+        const baseNamePattern = shyStageBasePatterns.map(escapeRegExp).join('|');
+        const match = new RegExp(`^(?:[^a-z0-9]+\\s*)?(?:${baseNamePattern})\\s+([ivxlcdm]+|\\d+)$`, 'i').exec(channelName?.trim() ?? '');
         if (!match) return null;
 
         const indexToken = match[1].toUpperCase();

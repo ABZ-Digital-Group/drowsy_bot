@@ -9,6 +9,7 @@ const OBS_NOW_SINGING_JSON_FILE = path.join(ASSETS_DIR, 'obs-now-singing.json');
 const OBS_ADS_JSON_FILE = path.join(DATA_DIR, 'obs-ads.json');
 const parsedObsHttpPort = Number.parseInt(process.env.OBS_HTTP_PORT ?? '', 10);
 const parsedAdminSessionHours = Number.parseInt(process.env.ADMIN_PANEL_SESSION_HOURS ?? '', 10);
+const parsedShyStageBaseName = process.env.SHY_STAGE_BASE_NAME?.trim();
 const parsedShyStageUnusedDeleteMinutes = Number.parseInt(process.env.SHY_STAGE_UNUSED_DELETE_MINUTES ?? '', 10);
 const parsedShyStageEmptyDeleteMinutes = Number.parseInt(process.env.SHY_STAGE_EMPTY_DELETE_MINUTES ?? '', 10);
 const parsedShyStageCleanupIntervalSeconds = Number.parseInt(process.env.SHY_STAGE_CLEANUP_INTERVAL_SECONDS ?? '', 10);
@@ -41,6 +42,7 @@ module.exports = {
     ADMIN_PANEL_SESSION_HOURS: Number.isInteger(parsedAdminSessionHours) && parsedAdminSessionHours > 0
         ? parsedAdminSessionHours
         : 12,
+    SHY_STAGE_BASE_NAME: parsedShyStageBaseName || 'sleepy singing',
     SHY_STAGE_UNUSED_DELETE_MINUTES: Number.isInteger(parsedShyStageUnusedDeleteMinutes) && parsedShyStageUnusedDeleteMinutes > 0
         ? parsedShyStageUnusedDeleteMinutes
         : 5,
