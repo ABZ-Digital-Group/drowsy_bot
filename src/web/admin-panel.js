@@ -586,6 +586,12 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
 
     async function handleRequest(request, response, url) {
         const isInternalApiRequest = url.pathname.startsWith('/admin/api/') && isAuthorizedApiRequest(request);
+        const isApiPath = url.pathname.startsWith('/admin/api/');
+        if (isApiPath && !isInternalApiRequest) {
+            sendJson(response, 401, { error: 'Valid bot API authorization is required.' });
+            return true;
+        }
+
         if (!config.ADMIN_PANEL_PASSWORD && !isInternalApiRequest) {
             sendHtml(response, 503, buildLoginHtml('The admin panel is disabled until ADMIN_PANEL_PASSWORD is configured.'));
             return true;
