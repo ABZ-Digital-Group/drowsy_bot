@@ -38,6 +38,7 @@ module.exports = {
     MAX_PURGE_SCAN_LIMIT: 1000,
     OBS_HTTP_HOST: process.env.OBS_HTTP_HOST?.trim() || '0.0.0.0',
     OBS_HTTP_PORT: Number.isFinite(parsedObsHttpPort) ? parsedObsHttpPort : null,
+    BOT_API_TOKEN: process.env.BOT_API_TOKEN?.trim() || null,
     ADMIN_PANEL_PASSWORD: process.env.ADMIN_PANEL_PASSWORD?.trim() || null,
     ADMIN_PANEL_SESSION_HOURS: Number.isInteger(parsedAdminSessionHours) && parsedAdminSessionHours > 0
         ? parsedAdminSessionHours

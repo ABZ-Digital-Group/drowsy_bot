@@ -133,6 +133,14 @@ function createAdminPanel({ client, config, state, communityFeature }) {
         return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
     }
 
+    function isAuthorizedApiRequest(request) {
+        if (isLoopbackRequest(request)) return true;
+        if (!config.BOT_API_TOKEN) return false;
+
+        const authorization = String(request.headers.authorization ?? '');
+        return authorization === `Bearer ${config.BOT_API_TOKEN}`;
+    }
+
     function parseMultipartForm(request, bodyBuffer) {
         const contentType = String(request.headers['content-type'] ?? '');
         const match = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
@@ -577,7 +585,7 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
     }
 
     async function handleRequest(request, response, url) {
-        const isInternalApiRequest = url.pathname.startsWith('/admin/api/') && isLoopbackRequest(request);
+        const isInternalApiRequest = url.pathname.startsWith('/admin/api/') && isAuthorizedApiRequest(request);
         if (!config.ADMIN_PANEL_PASSWORD && !isInternalApiRequest) {
             sendHtml(response, 503, buildLoginHtml('The admin panel is disabled until ADMIN_PANEL_PASSWORD is configured.'));
             return true;
