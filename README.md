@@ -379,12 +379,20 @@ npm install
 node index.js
 ```
 
-If you use `pm2`:
+For a production server, use the included `systemd` unit so the bot starts on boot and restarts after a crash:
 
 ```bash
-git pull origin main
-npm install
-pm2 restart drowsy_bot
+sudo cp deploy/drowsy-bot.service /etc/systemd/system/drowsy-bot.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now drowsy-bot
+sudo systemctl status drowsy-bot
+```
+
+View bot and management API startup errors with:
+
+```bash
+sudo journalctl -u drowsy-bot -f
+curl http://127.0.0.1:8080/health
 ```
 
 ## Troubleshooting
