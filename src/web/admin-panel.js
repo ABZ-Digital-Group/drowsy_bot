@@ -1,4 +1,4 @@
-const { ChannelType } = require('discord.js');
+const { ChannelType, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const crypto = require('crypto');
 
 function createAdminPanel({ client, config, state, communityFeature }) {
@@ -128,6 +128,11 @@ function createAdminPanel({ client, config, state, communityFeature }) {
         return Object.fromEntries(new URLSearchParams(Buffer.isBuffer(body) ? body.toString('utf8') : String(body)).entries());
     }
 
+    function isLoopbackRequest(request) {
+        const address = request.socket?.remoteAddress;
+        return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+    }
+
     function parseMultipartForm(request, bodyBuffer) {
         const contentType = String(request.headers['content-type'] ?? '');
         const match = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
@@ -222,6 +227,25 @@ function createAdminPanel({ client, config, state, communityFeature }) {
                     .map(channel => ({ id: channel.id, name: channel.name }))
                 : [];
 
+            const queueMembers = await Promise.all((session.queue || []).map(async (userId) => {
+                const member = guild ? (guild.members.cache.get(userId) ?? await guild.members.fetch(userId).catch(() => null)) : null;
+                return {
+                    id: userId,
+                    name: member?.displayName ?? member?.user?.username ?? userId,
+                    avatarUrl: member?.displayAvatarURL({ extension: 'png', size: 128 }) ?? null
+                };
+            }));
+
+            let speakerMember = null;
+            if (session.currentSpeaker && guild) {
+                const member = guild.members.cache.get(session.currentSpeaker) ?? await guild.members.fetch(session.currentSpeaker).catch(() => null);
+                speakerMember = {
+                    id: session.currentSpeaker,
+                    name: member?.displayName ?? member?.user?.username ?? session.currentSpeaker,
+                    avatarUrl: member?.displayAvatarURL({ extension: 'png', size: 128 }) ?? null
+                };
+            }
+
             return {
                 guildId,
                 guildName: guild?.name ?? guildId,
@@ -233,6 +257,11 @@ function createAdminPanel({ client, config, state, communityFeature }) {
                 songsSung: session.songsSung,
                 peakAttendance: session.peakAttendance,
                 audience: session.attendeeIds.size,
+                currentSpeaker: session.currentSpeaker,
+                currentSpeakerMember: speakerMember,
+                acceptingJoins: session.acceptingJoins !== false,
+                queue: session.queue || [],
+                queueMembers,
                 textChannels,
             };
         }));
@@ -548,7 +577,8 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
     }
 
     async function handleRequest(request, response, url) {
-        if (!config.ADMIN_PANEL_PASSWORD) {
+        const isInternalApiRequest = url.pathname.startsWith('/admin/api/') && isLoopbackRequest(request);
+        if (!config.ADMIN_PANEL_PASSWORD && !isInternalApiRequest) {
             sendHtml(response, 503, buildLoginHtml('The admin panel is disabled until ADMIN_PANEL_PASSWORD is configured.'));
             return true;
         }
@@ -581,7 +611,7 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
             return false;
         }
 
-        if (!getSession(request)) {
+        if (!isInternalApiRequest && !getSession(request)) {
             redirect(response, '/admin');
             return true;
         }
@@ -596,6 +626,45 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
 
         if (url.pathname === '/admin/api/state' && request.method === 'GET') {
             sendJson(response, 200, await buildPanelState());
+            return true;
+        }
+
+        if (url.pathname === '/admin/api/pd-log' && request.method === 'POST') {
+            const form = parseFormBody(await readRequestBody(request));
+            const guild = client.guilds.cache.get(form.guildId || config.GUILD_ID);
+            if (!guild) {
+                sendJson(response, 404, { error: 'Guild not found.' });
+                return true;
+            }
+
+            await guild.channels.fetch().catch(() => null);
+            const normalizedChannelName = name => name.toLowerCase().replace(/[\s_-]+/g, '');
+            const logChannel = guild.channels.cache.find(channel => normalizedChannelName(channel.name) === 'pdlogs');
+            if (!logChannel || !logChannel.isTextBased()) {
+                sendJson(response, 404, { error: 'A text channel named pd logs was not found.' });
+                return true;
+            }
+
+            const permissions = logChannel.permissionsFor(client.user);
+            if (!permissions?.has(PermissionFlagsBits.SendMessages) || !permissions.has(PermissionFlagsBits.EmbedLinks)) {
+                sendJson(response, 403, { error: 'DrowsyBot cannot send messages or embeds in pd logs.' });
+                return true;
+            }
+
+            const color = form.eventType === 'promotion' ? 0x10B981 : form.eventType === 'demotion' ? 0xF59E0B : 0xEF4444;
+            const embed = new EmbedBuilder()
+                .setColor(color)
+                .setTitle(form.eventType === 'promotion' ? 'Staff Promotion' : form.eventType === 'demotion' ? 'Staff Demotion' : 'Staff Departure')
+                .addFields(
+                    { name: 'Staff Member', value: form.memberName || form.discordId || 'Unknown', inline: true },
+                    { name: 'Discord ID', value: form.discordId || 'Unknown', inline: true },
+                    ...(form.oldRank || form.newRank ? [{ name: 'Rank Change', value: `${form.oldRank || 'None'} -> ${form.newRank || 'None'}` }] : []),
+                    ...(form.actorName ? [{ name: 'Actioned By', value: form.actorName }] : [])
+                )
+                .setTimestamp();
+
+            await logChannel.send({ embeds: [embed] });
+            sendJson(response, 200, { ok: true });
             return true;
         }
 
@@ -726,6 +795,182 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
         if (url.pathname === '/admin/ads/rotate-stop' && request.method === 'POST') {
             state.setAdvertisementRotationIntervalMs(null);
             await renderPanel(response, 'Advertisement rotation stopped.');
+            return true;
+        }
+
+        // STAGE QUEUE & HOST CONTROLS API FOR WEB MANAGEMENT
+        if (url.pathname === '/admin/api/stage/next' && request.method === 'POST') {
+            const form = parseFormBody(await readRequestBody(request));
+            const guild = form.guildId ? client.guilds.cache.get(form.guildId) : client.guilds.cache.first();
+            if (!guild) {
+                sendJson(response, 404, { error: 'Guild not found.' });
+                return true;
+            }
+            const session = state.peekGuildStageSession(guild.id);
+            if (!session) {
+                sendJson(response, 404, { error: 'No active stage in guild.' });
+                return true;
+            }
+
+            const channelId = form.channelId || session.panelChannelIds.values().next().value;
+            const channel = channelId ? (guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId).catch(() => null)) : null;
+            if (!channel?.isTextBased()) {
+                sendJson(response, 400, { error: 'Valid channel required.' });
+                return true;
+            }
+
+            const result = await stageFeature.nextSpeaker(channel);
+            sendJson(response, 200, { ok: true, result });
+            return true;
+        }
+
+        if (url.pathname === '/admin/api/stage/radio' && request.method === 'POST') {
+            const form = parseFormBody(await readRequestBody(request));
+            const guild = form.guildId ? client.guilds.cache.get(form.guildId) : client.guilds.cache.first();
+            if (!guild) {
+                sendJson(response, 404, { error: 'Guild not found.' });
+                return true;
+            }
+            const session = state.peekGuildStageSession(guild.id);
+            if (!session) {
+                sendJson(response, 404, { error: 'No active stage in guild.' });
+                return true;
+            }
+
+            const channelId = form.channelId || session.panelChannelIds.values().next().value;
+            const channel = channelId ? (guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId).catch(() => null)) : null;
+            if (!channel?.isTextBased()) {
+                sendJson(response, 400, { error: 'Valid channel required.' });
+                return true;
+            }
+
+            const result = await stageFeature.toggleRadio(channel);
+            sendJson(response, 200, { ok: true, result });
+            return true;
+        }
+
+        if (url.pathname === '/admin/api/stage/join-toggle' && request.method === 'POST') {
+            const form = parseFormBody(await readRequestBody(request));
+            const guild = form.guildId ? client.guilds.cache.get(form.guildId) : client.guilds.cache.first();
+            if (!guild) {
+                sendJson(response, 404, { error: 'Guild not found.' });
+                return true;
+            }
+            const session = state.peekGuildStageSession(guild.id);
+            if (!session) {
+                sendJson(response, 404, { error: 'No active stage in guild.' });
+                return true;
+            }
+
+            const channelId = form.channelId || session.panelChannelIds.values().next().value;
+            const channel = channelId ? (guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId).catch(() => null)) : null;
+            if (!channel?.isTextBased()) {
+                sendJson(response, 400, { error: 'Valid channel required.' });
+                return true;
+            }
+
+            const acceptingJoins = form.acceptingJoins === 'true' || form.acceptingJoins === true;
+            const result = await stageFeature.setJoinState(channel, acceptingJoins);
+            sendJson(response, 200, { ok: true, result });
+            return true;
+        }
+
+        if (url.pathname === '/admin/api/stage/remove-user' && request.method === 'POST') {
+            const form = parseFormBody(await readRequestBody(request));
+            const guild = form.guildId ? client.guilds.cache.get(form.guildId) : client.guilds.cache.first();
+            if (!guild || !form.userId) {
+                sendJson(response, 400, { error: 'Guild and userId required.' });
+                return true;
+            }
+            const session = state.peekGuildStageSession(guild.id);
+            if (!session) {
+                sendJson(response, 404, { error: 'No active stage in guild.' });
+                return true;
+            }
+
+            const channelId = form.channelId || session.panelChannelIds.values().next().value;
+            const channel = channelId ? (guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId).catch(() => null)) : null;
+            if (!channel?.isTextBased()) {
+                sendJson(response, 400, { error: 'Valid channel required.' });
+                return true;
+            }
+
+            const result = await stageFeature.leaveQueue(channel, form.userId);
+            sendJson(response, 200, { ok: true, result });
+            return true;
+        }
+
+        // ROLE AND NICKNAME SYNC API
+        if (url.pathname === '/admin/api/sync-member' && request.method === 'POST') {
+            const form = parseFormBody(await readRequestBody(request));
+            const { guildId, discordId, displayName, rank, house } = form;
+
+            const guild = guildId ? client.guilds.cache.get(guildId) : (client.guilds.cache.get(config.GUILD_ID) ?? client.guilds.cache.first());
+            if (!guild) {
+                sendJson(response, 404, { error: 'Guild not found.' });
+                return true;
+            }
+
+            const member = await guild.members.fetch(discordId).catch(() => null);
+            if (!member) {
+                sendJson(response, 404, { error: 'Discord member not found in guild.' });
+                return true;
+            }
+
+            const results = { rankRoleAdded: null, houseRoleAdded: null, nicknameChanged: null, errors: [] };
+
+            // Update nickname if requested and permitted
+            if (displayName && member.displayName !== displayName) {
+                try {
+                    await member.setNickname(displayName);
+                    results.nicknameChanged = displayName;
+                } catch (e) {
+                    results.errors.push(`Nickname update failed: ${e.message}`);
+                }
+            }
+
+            // Sync Rank Role if matched
+            if (rank) {
+                const targetRankRole = guild.roles.cache.find(r => r.name.toLowerCase() === rank.toLowerCase());
+                if (targetRankRole) {
+                    try {
+                        // Find other rank roles and remove them
+                        const knownRanks = ['Mr. Sandman', 'Realm God', 'Drowsy Defender', 'Dreamy Defender', 'Dreamland Guard', 'Nighty Knights', 'Nighty Knight', 'Tired Esquire'];
+                        const rolesToRemove = member.roles.cache.filter(r => knownRanks.some(kr => kr.toLowerCase() === r.name.toLowerCase()) && r.id !== targetRankRole.id);
+                        if (rolesToRemove.size > 0) {
+                            await member.roles.remove(rolesToRemove);
+                        }
+                        if (!member.roles.cache.has(targetRankRole.id)) {
+                            await member.roles.add(targetRankRole);
+                            results.rankRoleAdded = targetRankRole.name;
+                        }
+                    } catch (e) {
+                        results.errors.push(`Rank role update failed: ${e.message}`);
+                    }
+                }
+            }
+
+            // Sync House Role if matched
+            if (house) {
+                const targetHouseRole = guild.roles.cache.find(r => r.name.toLowerCase() === house.toLowerCase());
+                if (targetHouseRole) {
+                    try {
+                        const knownHouses = ['Stubo United', 'Penguin Force', 'Drowsy Operators'];
+                        const rolesToRemove = member.roles.cache.filter(r => knownHouses.some(kh => kh.toLowerCase() === r.name.toLowerCase()) && r.id !== targetHouseRole.id);
+                        if (rolesToRemove.size > 0) {
+                            await member.roles.remove(rolesToRemove);
+                        }
+                        if (!member.roles.cache.has(targetHouseRole.id)) {
+                            await member.roles.add(targetHouseRole);
+                            results.houseRoleAdded = targetHouseRole.name;
+                        }
+                    } catch (e) {
+                        results.errors.push(`House role update failed: ${e.message}`);
+                    }
+                }
+            }
+
+            sendJson(response, 200, { ok: results.errors.length === 0, results });
             return true;
         }
 
