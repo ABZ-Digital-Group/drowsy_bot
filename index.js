@@ -1558,22 +1558,19 @@ async function handleAdminRequest(request, response, url) {
     response.end('Not found');
 }
 
-function startHttpServer() {
+function startObsHttpServer() {
 
     const server = http.createServer((request, response) => {
         Promise.resolve((async () => {
         const url = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`);
+        const currentSinger = readObsNowSingingText();
+        const currentOverlay = readObsNowSingingOverlay();
+        const currentAdvertisement = readObsAdvertisement();
         if (await adminPanel.handleRequest(request, response, url)) return;
 
         if (url.pathname === '/health') {
             response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             response.end(JSON.stringify({ ok: true }));
-            return;
-        }
-
-        if (url.pathname.startsWith('/obs/')) {
-            response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-            response.end('Not found');
             return;
         }
 
@@ -1680,14 +1677,14 @@ function startHttpServer() {
         });
     });
 
-    server.listen(config.ADMIN_HTTP_PORT, config.ADMIN_HTTP_HOST, () => {
-        console.log(`Admin HTTP server listening on http://${config.ADMIN_HTTP_HOST}:${config.ADMIN_HTTP_PORT}`);
+    server.listen(config.OBS_HTTP_PORT, config.OBS_HTTP_HOST, () => {
+        console.log(`OBS overlay server listening on http://${config.OBS_HTTP_HOST}:${config.OBS_HTTP_PORT}`);
     });
 
     server.on('error', error => {
         console.error('Failed to start admin HTTP server:', error);
         if (error.code === 'EADDRINUSE') {
-            console.error(`Port ${config.ADMIN_HTTP_PORT} is already in use. Stop the existing bot process or choose a different ADMIN_HTTP_PORT.`);
+            console.error(`Port ${config.OBS_HTTP_PORT} is already in use. Stop the existing bot process or choose a different OBS_HTTP_PORT.`);
             process.exit(1);
         }
     });
@@ -1700,7 +1697,7 @@ function bindAsync(eventName, handler) {
         });
     });
 }
-    startHttpServer();
+    startObsHttpServer();
 
 client.once('clientReady', async () => {
     console.log('Drowsy bot online.');
