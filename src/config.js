@@ -3,11 +3,8 @@ const path = require('path');
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DATA_DIR = path.join(ROOT_DIR, 'data');
 const ASSETS_DIR = path.join(ROOT_DIR, 'assets');
-const ADS_DIR = path.join(ASSETS_DIR, 'ads');
-const OBS_NOW_SINGING_FILE = path.join(ASSETS_DIR, 'obs-now-singing.txt');
-const OBS_NOW_SINGING_JSON_FILE = path.join(ASSETS_DIR, 'obs-now-singing.json');
-const OBS_ADS_JSON_FILE = path.join(DATA_DIR, 'obs-ads.json');
-const parsedObsHttpPort = Number.parseInt(process.env.OBS_HTTP_PORT ?? '', 10);
+const BOT_SETTINGS_JSON_FILE = path.join(DATA_DIR, 'bot-settings.json');
+const parsedAdminHttpPort = Number.parseInt(process.env.ADMIN_HTTP_PORT ?? '', 10);
 const parsedAdminSessionHours = Number.parseInt(process.env.ADMIN_PANEL_SESSION_HOURS ?? '', 10);
 const parsedShyStageBaseName = process.env.SHY_STAGE_BASE_NAME?.trim();
 const parsedShyStageUnusedDeleteMinutes = Number.parseInt(process.env.SHY_STAGE_UNUSED_DELETE_MINUTES ?? '', 10);
@@ -30,15 +27,15 @@ const uniqueShyStageLimitChoices = [...new Set(parsedShyStageLimitChoices)].sort
 module.exports = {
     ROOT_DIR,
     BOT_TOKEN: process.env.DISCORD_TOKEN,
+    ADMIN_HTTP_HOST: process.env.ADMIN_HTTP_HOST?.trim() || '0.0.0.0',
+    ADMIN_HTTP_PORT: Number.isFinite(parsedAdminHttpPort) ? parsedAdminHttpPort : 8080,
     CLIENT_ID: process.env.CLIENT_ID,
     GUILD_ID: process.env.GUILD_ID,
     ALLOW_INVITE_PASSWORD: process.env.ALLOW_INVITE_PASSWORD?.trim(),
     INVITE_REGEX: /(https?:\/\/)?(www\.)?(discord\.gg|discord(?:app)?\.com\/(invite|events))\/[A-Za-z0-9-]+(?:\/[A-Za-z0-9-]+)?/i,
     DEFAULT_PURGE_SCAN_LIMIT: 250,
     MAX_PURGE_SCAN_LIMIT: 1000,
-    OBS_HTTP_HOST: process.env.OBS_HTTP_HOST?.trim() || '0.0.0.0',
-    OBS_HTTP_PORT: Number.isFinite(parsedObsHttpPort) ? parsedObsHttpPort : null,
-    BOT_API_TOKEN: process.env.BOT_API_TOKEN?.trim() || null,
+    BOT_API_TOKEN: (process.env.BOT_API_SECRET || process.env.BOT_API_TOKEN)?.trim() || null,
     ADMIN_PANEL_PASSWORD: process.env.ADMIN_PANEL_PASSWORD?.trim() || null,
     ADMIN_PANEL_SESSION_HOURS: Number.isInteger(parsedAdminSessionHours) && parsedAdminSessionHours > 0
         ? parsedAdminSessionHours
@@ -60,17 +57,12 @@ module.exports = {
         STAGE_ADMIN_ROLES: ['Realm God', 'Dreamy Defender', 'Dreamland Guard', 'Nighty Knight', 'Tired Esquire'],
     DATA_DIR,
     ASSETS_DIR,
-    ADS_DIR,
-    OBS_NOW_SINGING_FILE,
-    OBS_NOW_SINGING_JSON_FILE,
-    OBS_ADS_JSON_FILE,
+    BOT_SETTINGS_JSON_FILE,
     FILES: {
         guildConfig: path.join(DATA_DIR, 'guild-config.json'),
         allowedInvites: path.join(DATA_DIR, 'allowed-invite-users.json'),
         messageStats: path.join(DATA_DIR, 'message-stats.json'),
         voiceHours: path.join(DATA_DIR, 'voice-hours.json'),
-        obsNowSinging: OBS_NOW_SINGING_FILE,
-        obsNowSingingJson: OBS_NOW_SINGING_JSON_FILE,
-        obsAds: OBS_ADS_JSON_FILE,
+        botSettings: BOT_SETTINGS_JSON_FILE,
     },
 };

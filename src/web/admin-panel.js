@@ -3,6 +3,7 @@ const crypto = require('crypto');
 
 function createAdminPanel({ client, config, state, communityFeature }) {
     const sessions = new Map();
+    let syncInProgress = false;
 
     function escapeHtml(value) {
         return String(value ?? '')
@@ -134,11 +135,26 @@ function createAdminPanel({ client, config, state, communityFeature }) {
     }
 
     function isAuthorizedApiRequest(request) {
-        if (isLoopbackRequest(request)) return true;
         if (!config.BOT_API_TOKEN) return false;
 
-        const authorization = String(request.headers.authorization ?? '');
-        return authorization === `Bearer ${config.BOT_API_TOKEN}`;
+        const supplied = String(request.headers['x-bot-api-key'] ?? '')
+            || String(request.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+        if (!supplied) return false;
+
+        const expected = Buffer.from(config.BOT_API_TOKEN, 'utf8');
+        const actual = Buffer.from(supplied, 'utf8');
+        return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+    }
+
+    function getBotStatus() {
+        return {
+            online: client.isReady(),
+            botUser: client.user?.tag ?? null,
+            guildCount: client.guilds.cache.size,
+            uptimeSeconds: Math.floor(process.uptime()),
+            lastReadyAt: client.readyAt?.toISOString() ?? null,
+            latencyMs: Number.isFinite(client.ws?.ping) && client.ws.ping >= 0 ? client.ws.ping : null,
+        };
     }
 
     function parseMultipartForm(request, bodyBuffer) {
@@ -202,8 +218,6 @@ function createAdminPanel({ client, config, state, communityFeature }) {
     }
 
     async function buildPanelState() {
-        const advertisements = state.getAdvertisements();
-        const activeAdvertisement = state.getActiveAdvertisement();
         const guilds = [];
 
         for (const guild of client.guilds.cache.values()) {
@@ -280,10 +294,8 @@ function createAdminPanel({ client, config, state, communityFeature }) {
             guildCount: client.guilds.cache.size,
             guilds: guilds.sort((left, right) => left.name.localeCompare(right.name)),
             trackedStages,
-            advertisements,
-            activeAdvertisement,
-            rotationIntervalMs: state.advertisements.rotationIntervalMs,
             allowedInviteUsers: [...state.allowedInviteUsers].sort(),
+            botSettings: state.getBotSettings(),
         };
     }
 
@@ -402,7 +414,7 @@ function createAdminPanel({ client, config, state, communityFeature }) {
 <body>
 <main class="card">
 <h1>DrowsyBot Admin</h1>
-<p>Sign in to manage stage tracking, announcements, invite exceptions, and advertisement controls.</p>
+<p>Sign in to manage stage tracking, announcements, and invite exceptions.</p>
 ${disabledNotice}
 ${safeError}
 <form method="post" action="/admin/login">
@@ -448,28 +460,6 @@ ${safeError}
                     <button type="submit">Start Stage Tracking</button>
                 </form>
             </article>`).join('');
-
-        const adMarkup = panelState.advertisements.length > 0
-            ? panelState.advertisements.map((advertisement, index) => `
-                <article class="list-card">
-                    <div class="list-card__row">
-                        <div>
-                            <h3>${escapeHtml(advertisement.title ?? `Ad ${index + 1}`)}</h3>
-                            <p><strong>File:</strong> ${escapeHtml(advertisement.fileName ?? 'Unknown')}</p>
-                        </div>
-                        <div class="inline-form">
-                            <form method="post" action="/admin/ads/select">
-                                <input type="hidden" name="index" value="${index}">
-                                <button type="submit" class="button button--ghost">${panelState.activeAdvertisement?.id === advertisement.id ? 'Active' : 'Set Active'}</button>
-                            </form>
-                            <form method="post" action="/admin/ads/delete">
-                                <input type="hidden" name="index" value="${index}">
-                                <button type="submit" class="button button--ghost">Delete</button>
-                            </form>
-                        </div>
-                    </div>
-                </article>`).join('')
-            : '<article class="list-card"><p>No advertisements uploaded yet.</p></article>';
 
         const inviteMarkup = panelState.allowedInviteUsers.length > 0
             ? panelState.allowedInviteUsers.map(userId => `
@@ -532,7 +522,6 @@ ${flashMarkup}
 <section class="grid">
 <article class="stat"><p class="stat__label">Guilds</p><p class="stat__value">${panelState.guildCount}</p></article>
 <article class="stat"><p class="stat__label">Tracked Stages</p><p class="stat__value">${panelState.trackedStages.length}</p></article>
-<article class="stat"><p class="stat__label">Ads Uploaded</p><p class="stat__value">${panelState.advertisements.length}</p></article>
 <article class="stat"><p class="stat__label">Invite Exceptions</p><p class="stat__value">${panelState.allowedInviteUsers.length}</p></article>
 </section>
 <section class="sections">
@@ -544,7 +533,6 @@ ${flashMarkup}
 <section class="section"><h2>Invite Exceptions</h2><p>Allow or remove users who can post Discord invite links.</p><form class="stack-form" method="post" action="/admin/invites/add"><label>User ID</label><input name="userId" required placeholder="Discord user ID"><button type="submit">Allow Invite Posting</button></form>${inviteMarkup}</section>
 </section>
 <section class="sections">
-<section class="section"><h2>Advertisement Controls</h2><p>Manage the OBS advertisement rotation without Discord commands.</p><article class="list-card"><p><strong>Current Active Ad:</strong> ${escapeHtml(panelState.activeAdvertisement?.title ?? 'None')}</p><p><strong>Rotation:</strong> ${panelState.rotationIntervalMs ? `${Math.max(1, Math.floor(panelState.rotationIntervalMs / 1000))}s` : 'Off'}</p><form class="stack-form" method="post" action="/admin/ads/upload" enctype="multipart/form-data"><label>Ad Title</label><input name="title" maxlength="100" placeholder="Optional title"><label>Image File</label><input name="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" required><button type="submit">Upload Ad</button></form><form class="inline-form" method="post" action="/admin/ads/rotate"><input type="number" name="seconds" min="5" max="3600" placeholder="Seconds"><button type="submit">Start Rotation</button></form><form class="inline-form" method="post" action="/admin/ads/rotate-stop"><button type="submit" class="button button--ghost">Stop Rotation</button></form></article>${adMarkup}</section>
 <section class="section"><h2>Bot Actions</h2><p>Run moderation and housekeeping actions from the browser.</p><article class="list-card"><form class="stack-form" method="post" action="/admin/invites/purge"><label>Guild</label><select name="guildId" required>${buildGuildOptions(panelState.guilds)}</select><label>Messages Per Channel</label><input name="messagesPerChannel" type="number" min="1" max="1000" value="250"><button type="submit">Purge Unauthorized Invites</button></form></article><article class="list-card"><h3>Saved Guild Defaults</h3>${panelState.guilds.map(guild => `<p><strong>${escapeHtml(guild.name)}:</strong> ${escapeHtml(guild.announcementColor ?? 'Default')}</p>`).join('')}</article></section>
 </section>
 ${messageViewerSection}
@@ -580,11 +568,139 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
 </html>`;
     }
 
+    async function syncMember(form) {
+        const { guildId, discordId, displayName, rank, house } = form;
+        const guild = guildId ? client.guilds.cache.get(guildId) : (client.guilds.cache.get(config.GUILD_ID) ?? client.guilds.cache.first());
+        if (!guild) return { error: 'Guild not found.' };
+
+        const member = await guild.members.fetch(discordId).catch(() => null);
+        if (!member) return { error: 'Discord member not found in guild.' };
+
+        const results = { rankRoleAdded: null, houseRoleAdded: null, nicknameChanged: null, errors: [] };
+        if (displayName && member.displayName !== displayName) {
+            try {
+                await member.setNickname(displayName);
+                results.nicknameChanged = displayName;
+            } catch (error) {
+                results.errors.push(`Nickname update failed: ${error.message}`);
+            }
+        }
+
+        if (rank) {
+            const targetRankRole = guild.roles.cache.find(role => role.name.toLowerCase() === rank.toLowerCase());
+            if (targetRankRole) {
+                try {
+                    const knownRanks = ['Mr. Sandman', 'Realm God', 'Drowsy Defender', 'Dreamy Defender', 'Dreamland Guard', 'Nighty Knights', 'Nighty Knight', 'Tired Esquire'];
+                    const rolesToRemove = member.roles.cache.filter(role => knownRanks.some(name => name.toLowerCase() === role.name.toLowerCase()) && role.id !== targetRankRole.id);
+                    if (rolesToRemove.size > 0) await member.roles.remove(rolesToRemove);
+                    if (!member.roles.cache.has(targetRankRole.id)) {
+                        await member.roles.add(targetRankRole);
+                        results.rankRoleAdded = targetRankRole.name;
+                    }
+                } catch (error) {
+                    results.errors.push(`Rank role update failed: ${error.message}`);
+                }
+            }
+        }
+
+        if (house) {
+            const targetHouseRole = guild.roles.cache.find(role => role.name.toLowerCase() === house.toLowerCase());
+            if (targetHouseRole) {
+                try {
+                    const knownHouses = ['Stubo United', 'Penguin Force', 'Drowsy Operators'];
+                    const rolesToRemove = member.roles.cache.filter(role => knownHouses.some(name => name.toLowerCase() === role.name.toLowerCase()) && role.id !== targetHouseRole.id);
+                    if (rolesToRemove.size > 0) await member.roles.remove(rolesToRemove);
+                    if (!member.roles.cache.has(targetHouseRole.id)) {
+                        await member.roles.add(targetHouseRole);
+                        results.houseRoleAdded = targetHouseRole.name;
+                    }
+                } catch (error) {
+                    results.errors.push(`House role update failed: ${error.message}`);
+                }
+            }
+        }
+
+        return { results };
+    }
+
     async function renderPanel(response, flashMessage = '', statusCode = 200) {
         sendHtml(response, statusCode, buildPanelHtml(await buildPanelState(), flashMessage));
     }
 
     async function handleRequest(request, response, url) {
+        if (url.pathname === '/status' && request.method === 'GET') {
+            if (!isAuthorizedApiRequest(request)) {
+                sendJson(response, 401, { error: 'Unauthorized.' });
+                return true;
+            }
+
+            sendJson(response, 200, getBotStatus());
+            return true;
+        }
+
+        if (url.pathname === '/actions/announcement' && request.method === 'POST') {
+            if (!isAuthorizedApiRequest(request)) {
+                sendJson(response, 401, { error: 'Unauthorized.' });
+                return true;
+            }
+
+            const form = parseFormBody(await readRequestBody(request));
+            const message = String(form.message ?? '').trim();
+            if (!form.guildId || !form.channelId || !message || message.length > 4000) {
+                sendJson(response, 400, { error: 'Guild, authorized channel, and a message up to 4000 characters are required.' });
+                return true;
+            }
+
+            const result = await communityFeature.sendAnnouncementFromAdmin({
+                guildId: form.guildId,
+                channelId: form.channelId,
+                message,
+                title: String(form.title ?? '').trim().slice(0, 256),
+                color: String(form.color ?? '').trim(),
+            });
+            sendJson(response, result.status === 'sent' ? 200 : 400, result.status === 'sent'
+                ? { ok: true, result }
+                : { error: result.error ?? 'Discord action failed.' });
+            return true;
+        }
+
+        if (url.pathname === '/actions/sync' && request.method === 'POST') {
+            if (!isAuthorizedApiRequest(request)) {
+                sendJson(response, 401, { error: 'Unauthorized.' });
+                return true;
+            }
+            if (!client.isReady()) {
+                sendJson(response, 503, { error: 'Bot offline.' });
+                return true;
+            }
+            if (syncInProgress) {
+                sendJson(response, 409, { error: 'Action already running.' });
+                return true;
+            }
+
+            syncInProgress = true;
+            try {
+                const form = parseFormBody(await readRequestBody(request));
+                if (!/^\d{17,20}$/.test(String(form.discordId ?? ''))) {
+                    sendJson(response, 400, { error: 'A valid Discord member ID is required.' });
+                    return true;
+                }
+                const result = await syncMember(form);
+                if (result.error) {
+                    sendJson(response, 404, { error: result.error });
+                    return true;
+                }
+                sendJson(response, 200, { ok: result.results.errors.length === 0, results: result.results });
+            } finally {
+                syncInProgress = false;
+            }
+            return true;
+        }
+
+        if (!url.pathname.startsWith('/admin/api/')) {
+            return false;
+        }
+
         const isInternalApiRequest = url.pathname.startsWith('/admin/api/') && isAuthorizedApiRequest(request);
         const isApiPath = url.pathname.startsWith('/admin/api/');
         if (isApiPath && !isInternalApiRequest) {
@@ -640,6 +756,50 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
 
         if (url.pathname === '/admin/api/state' && request.method === 'GET') {
             sendJson(response, 200, await buildPanelState());
+            return true;
+        }
+
+        if (url.pathname === '/admin/api/settings' && request.method === 'POST') {
+            const form = parseFormBody(await readRequestBody(request));
+            const baseName = String(form.shyStageBaseName ?? '').trim();
+            const alwaysVisibleCount = Number.parseInt(form.shyStageAlwaysVisibleCount ?? '', 10);
+            const userLimit = Number.parseInt(form.shyStageUserLimit ?? '', 10);
+            const unusedDeleteMinutes = Number.parseInt(form.shyStageUnusedDeleteMinutes ?? '', 10);
+            const emptyDeleteMinutes = Number.parseInt(form.shyStageEmptyDeleteMinutes ?? '', 10);
+            const cleanupIntervalSeconds = Number.parseInt(form.shyStageCleanupIntervalSeconds ?? '', 10);
+            const limitChoices = String(form.shyStageLimitChoices ?? '')
+                .split(',')
+                .map(value => value.trim().toLowerCase() === 'unlimited' ? 0 : Number.parseInt(value.trim(), 10))
+                .filter(value => value === 0 || (Number.isInteger(value) && value >= 1 && value <= 99));
+            const statsChannelId = String(form.postEventStatsChannelId ?? '').trim();
+            const maxQueueLength = Number.parseInt(form.maxQueueLength ?? '', 10);
+
+            if (!baseName || baseName.length > 80
+                || !Number.isInteger(alwaysVisibleCount) || alwaysVisibleCount < 1 || alwaysVisibleCount > 20
+                || !Number.isInteger(userLimit) || userLimit < 0 || userLimit > 99
+                || !Number.isInteger(unusedDeleteMinutes) || unusedDeleteMinutes < 1 || unusedDeleteMinutes > 1440
+                || !Number.isInteger(emptyDeleteMinutes) || emptyDeleteMinutes < 1 || emptyDeleteMinutes > 1440
+                || !Number.isInteger(cleanupIntervalSeconds) || cleanupIntervalSeconds < 10 || cleanupIntervalSeconds > 3600
+                || !Number.isInteger(maxQueueLength) || maxQueueLength < 1 || maxQueueLength > 500
+                || limitChoices.length === 0) {
+                sendJson(response, 400, { error: 'Invalid bot settings.' });
+                return true;
+            }
+
+            const settings = state.updateBotSettings({
+                shyStage: {
+                    baseName,
+                    alwaysVisibleCount,
+                    userLimit,
+                    limitChoices: [...new Set(limitChoices)],
+                    unusedDeleteMinutes,
+                    emptyDeleteMinutes,
+                    cleanupIntervalSeconds,
+                },
+                postEventStats: { channelId: statsChannelId || null },
+                queue: { maxQueueLength },
+            });
+            sendJson(response, 200, { ok: true, settings });
             return true;
         }
 
@@ -750,6 +910,11 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
             const panelState = await buildPanelState();
             const statusCode = channelViewer.status === 'ok' ? 200 : 400;
             sendHtml(response, statusCode, buildPanelHtml(panelState, '', channelViewer));
+            return true;
+        }
+
+        if (url.pathname.startsWith('/admin/ads/')) {
+            sendJson(response, 404, { error: 'Not found.' });
             return true;
         }
 
@@ -917,74 +1082,16 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
         // ROLE AND NICKNAME SYNC API
         if (url.pathname === '/admin/api/sync-member' && request.method === 'POST') {
             const form = parseFormBody(await readRequestBody(request));
-            const { guildId, discordId, displayName, rank, house } = form;
-
-            const guild = guildId ? client.guilds.cache.get(guildId) : (client.guilds.cache.get(config.GUILD_ID) ?? client.guilds.cache.first());
-            if (!guild) {
-                sendJson(response, 404, { error: 'Guild not found.' });
+            if (!/^\d{17,20}$/.test(String(form.discordId ?? ''))) {
+                sendJson(response, 400, { error: 'A valid Discord member ID is required.' });
                 return true;
             }
-
-            const member = await guild.members.fetch(discordId).catch(() => null);
-            if (!member) {
-                sendJson(response, 404, { error: 'Discord member not found in guild.' });
+            const result = await syncMember(form);
+            if (result.error) {
+                sendJson(response, 404, { error: result.error });
                 return true;
             }
-
-            const results = { rankRoleAdded: null, houseRoleAdded: null, nicknameChanged: null, errors: [] };
-
-            // Update nickname if requested and permitted
-            if (displayName && member.displayName !== displayName) {
-                try {
-                    await member.setNickname(displayName);
-                    results.nicknameChanged = displayName;
-                } catch (e) {
-                    results.errors.push(`Nickname update failed: ${e.message}`);
-                }
-            }
-
-            // Sync Rank Role if matched
-            if (rank) {
-                const targetRankRole = guild.roles.cache.find(r => r.name.toLowerCase() === rank.toLowerCase());
-                if (targetRankRole) {
-                    try {
-                        // Find other rank roles and remove them
-                        const knownRanks = ['Mr. Sandman', 'Realm God', 'Drowsy Defender', 'Dreamy Defender', 'Dreamland Guard', 'Nighty Knights', 'Nighty Knight', 'Tired Esquire'];
-                        const rolesToRemove = member.roles.cache.filter(r => knownRanks.some(kr => kr.toLowerCase() === r.name.toLowerCase()) && r.id !== targetRankRole.id);
-                        if (rolesToRemove.size > 0) {
-                            await member.roles.remove(rolesToRemove);
-                        }
-                        if (!member.roles.cache.has(targetRankRole.id)) {
-                            await member.roles.add(targetRankRole);
-                            results.rankRoleAdded = targetRankRole.name;
-                        }
-                    } catch (e) {
-                        results.errors.push(`Rank role update failed: ${e.message}`);
-                    }
-                }
-            }
-
-            // Sync House Role if matched
-            if (house) {
-                const targetHouseRole = guild.roles.cache.find(r => r.name.toLowerCase() === house.toLowerCase());
-                if (targetHouseRole) {
-                    try {
-                        const knownHouses = ['Stubo United', 'Penguin Force', 'Drowsy Operators'];
-                        const rolesToRemove = member.roles.cache.filter(r => knownHouses.some(kh => kh.toLowerCase() === r.name.toLowerCase()) && r.id !== targetHouseRole.id);
-                        if (rolesToRemove.size > 0) {
-                            await member.roles.remove(rolesToRemove);
-                        }
-                        if (!member.roles.cache.has(targetHouseRole.id)) {
-                            await member.roles.add(targetHouseRole);
-                            results.houseRoleAdded = targetHouseRole.name;
-                        }
-                    } catch (e) {
-                        results.errors.push(`House role update failed: ${e.message}`);
-                    }
-                }
-            }
-
-            sendJson(response, 200, { ok: results.errors.length === 0, results });
+            sendJson(response, 200, { ok: result.results.errors.length === 0, results: result.results });
             return true;
         }
 

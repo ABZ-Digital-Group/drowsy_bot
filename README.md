@@ -4,7 +4,6 @@ Drowsy Bot is a Discord bot focused on three areas:
 
 - hosted stage and queue events
 - invite-link moderation and invite allowlisting
-- OBS/browser overlays for now-singing and sponsor/ad display
 
 It is built with Node.js and discord.js and stores runtime data in JSON files under `data/`.
 
@@ -51,9 +50,9 @@ DISCORD_TOKEN=your_bot_token
 CLIENT_ID=your_application_id
 GUILD_ID=your_server_id
 ALLOW_INVITE_PASSWORD=optional_dm_password
-OBS_HTTP_PORT=8080
-OBS_HTTP_HOST=0.0.0.0
-BOT_API_TOKEN=use-the-same-long-random-value-in-the-management-site
+ADMIN_HTTP_PORT=8080
+ADMIN_HTTP_HOST=127.0.0.1
+BOT_API_SECRET=use-the-same-long-random-value-in-the-management-site
 SHY_STAGE_BASE_NAME=sleepy singing
 SHY_STAGE_UNUSED_DELETE_MINUTES=5
 SHY_STAGE_EMPTY_DELETE_MINUTES=15
@@ -67,13 +66,19 @@ SHY_STAGE_LIMIT_CHOICES=5,10,15,unlimited
 - `CLIENT_ID`: Discord application ID used to register guild commands
 - `GUILD_ID`: guild where slash commands are registered
 - `ALLOW_INVITE_PASSWORD`: optional password used by the DM command `!allowinvite <password>`
-- `OBS_HTTP_PORT`: optional port for the built-in OBS overlay endpoint
-- `OBS_HTTP_HOST`: optional bind host for the OBS overlay endpoint
-- `BOT_API_TOKEN`: shared secret required by remote management-site API requests
+- `ADMIN_HTTP_PORT`: port for the browser admin panel
+- `ADMIN_HTTP_HOST`: bind host for the private bot API; use `127.0.0.1` behind a local reverse proxy
+- `BOT_API_SECRET`: shared secret required by management-site API requests; keep it server-side
 - `SHY_STAGE_BASE_NAME`: optional base name prefix for shy stage channels (defaults to `sleepy singing`)
 - `SHY_STAGE_UNUSED_DELETE_MINUTES`: optional minutes before an unused auto-created shy stage is deleted
 - `SHY_STAGE_EMPTY_DELETE_MINUTES`: optional minutes before a previously used shy stage above 1 and 2 is deleted after becoming empty
 - `SHY_STAGE_CLEANUP_INTERVAL_SECONDS`: optional cleanup sweep interval for shy-stage deletion checks
+
+## Management Website Connection
+
+The management website connects to the bot with `X-Bot-Api-Key` over `BOT_API_URL`. Configure the same `BOT_API_SECRET` in both applications. Set the website value to the bot's private HTTPS URL, or to `http://127.0.0.1:8080` when both services run on the same VPS. Do not expose the Discord token or API secret to browser JavaScript.
+
+The bot API provides `GET /health`, authenticated `GET /status`, authenticated `POST /actions/sync`, and authenticated `POST /actions/announcement`.
 - `SHY_STAGE_LIMIT_CHOICES`: optional comma-separated member-limit button choices for bot-created shy stages, for example `5,10,15,unlimited`
 - `SHY_STAGE_CLEANUP_INTERVAL_SECONDS`: optional cleanup sweep interval for shy-stage deletion checks
 
@@ -166,11 +171,8 @@ The stage queue is built for hosted performances or open-mic style events.
 ### Notes
 
 - `assets/intermission.mp3` is used for radio playback.
-- `assets/obs-now-singing.txt` is updated with the current singer name for OBS text sources.
 - only one voice channel can be active per server at a time
 - multiple text-channel control panels can manage that same active voice channel
-- uploaded sponsor images are stored under `assets/ads/` for the OBS ad overlay
-- when a stage is active, the bot also posts the current sponsor ad into the active control-panel text channels and updates it as ads change or rotate
 
 ## Shy Stage Overflow Rooms
 
