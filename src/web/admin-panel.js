@@ -569,7 +569,7 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
     }
 
     async function syncMember(form) {
-        const { guildId, discordId, rank, house } = form;
+        const { guildId, discordId } = form;
         const guild = guildId ? client.guilds.cache.get(guildId) : (client.guilds.cache.get(config.GUILD_ID) ?? client.guilds.cache.first());
         if (!guild) return { error: 'Guild not found.' };
 
@@ -579,44 +579,8 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
         const results = {
             discordDisplayName: member.displayName,
             discordUsername: member.user.username,
-            rankRoleAdded: null,
-            houseRoleAdded: null,
             errors: []
         };
-
-        if (rank) {
-            const targetRankRole = guild.roles.cache.find(role => role.name.toLowerCase() === rank.toLowerCase());
-            if (targetRankRole) {
-                try {
-                    const knownRanks = ['Mr. Sandman', 'Realm God', 'Drowsy Defender', 'Dreamy Defender', 'Dreamland Guard', 'Nighty Knights', 'Nighty Knight', 'Tired Esquire'];
-                    const rolesToRemove = member.roles.cache.filter(role => knownRanks.some(name => name.toLowerCase() === role.name.toLowerCase()) && role.id !== targetRankRole.id);
-                    if (rolesToRemove.size > 0) await member.roles.remove(rolesToRemove);
-                    if (!member.roles.cache.has(targetRankRole.id)) {
-                        await member.roles.add(targetRankRole);
-                        results.rankRoleAdded = targetRankRole.name;
-                    }
-                } catch (error) {
-                    results.errors.push(`Rank role update failed: ${error.message}`);
-                }
-            }
-        }
-
-        if (house) {
-            const targetHouseRole = guild.roles.cache.find(role => role.name.toLowerCase() === house.toLowerCase());
-            if (targetHouseRole) {
-                try {
-                    const knownHouses = ['Stubo United', 'Penguin Force', 'Drowsy Operators'];
-                    const rolesToRemove = member.roles.cache.filter(role => knownHouses.some(name => name.toLowerCase() === role.name.toLowerCase()) && role.id !== targetHouseRole.id);
-                    if (rolesToRemove.size > 0) await member.roles.remove(rolesToRemove);
-                    if (!member.roles.cache.has(targetHouseRole.id)) {
-                        await member.roles.add(targetHouseRole);
-                        results.houseRoleAdded = targetHouseRole.name;
-                    }
-                } catch (error) {
-                    results.errors.push(`House role update failed: ${error.message}`);
-                }
-            }
-        }
 
         return { results };
     }
