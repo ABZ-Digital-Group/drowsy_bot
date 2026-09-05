@@ -569,22 +569,20 @@ announcementGuildSelect.addEventListener('change', syncAnnouncementChannels);
     }
 
     async function syncMember(form) {
-        const { guildId, discordId, displayName, rank, house } = form;
+        const { guildId, discordId, rank, house } = form;
         const guild = guildId ? client.guilds.cache.get(guildId) : (client.guilds.cache.get(config.GUILD_ID) ?? client.guilds.cache.first());
         if (!guild) return { error: 'Guild not found.' };
 
         const member = await guild.members.fetch(discordId).catch(() => null);
         if (!member) return { error: 'Discord member not found in guild.' };
 
-        const results = { rankRoleAdded: null, houseRoleAdded: null, nicknameChanged: null, errors: [] };
-        if (displayName && member.displayName !== displayName) {
-            try {
-                await member.setNickname(displayName);
-                results.nicknameChanged = displayName;
-            } catch (error) {
-                results.errors.push(`Nickname update failed: ${error.message}`);
-            }
-        }
+        const results = {
+            discordDisplayName: member.displayName,
+            discordUsername: member.user.username,
+            rankRoleAdded: null,
+            houseRoleAdded: null,
+            errors: []
+        };
 
         if (rank) {
             const targetRankRole = guild.roles.cache.find(role => role.name.toLowerCase() === rank.toLowerCase());
